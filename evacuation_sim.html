@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoSi — PSO Evacuation Simulator and Study</title>
+<style id="theme"></style>
+</head>
+<body>
+<div id="topbar"></div>
+<div class="workspace">
+  <div class="sidepanel" id="sidePanel"></div>
+  <div class="canvasarea"><canvas id="canvas" width="1300" height="820"></canvas>
+    <div class="zoombar" title="Zoom: mouse wheel, or + / - keys. Pan: drag the map (in Edit: Space + drag, or middle mouse). 0 = fit."><button id="zoomOut" aria-label="Zoom out">&minus;</button><span id="zoomLbl">100%</span><button id="zoomIn" aria-label="Zoom in">+</button><button id="zoomFit" class="wide">Fit</button></div></div>
+</div>
+<div class="statusbar"><span id="status">Ready</span><span style="flex:1"></span><span id="toolLabel">Tool: Select</span></div>
+<script id="appjs">
+const CSS=`
+:root{--bg:#f5f7fa;--panel:#ffffff;--panel-border:#e2e8f0;--toolbar:#1e293b;--toolbar-text:#f8fafc;--accent:#3b82f6;--danger:#ef4444;--success:#10b981;--muted:#64748b;--canvas-bg:#ffffff;--wall:#64748b;--exit:#10b981;--safe:#3b82f6;--particle:#22c55e;--particle-evac:#86efac;--select:#3b82f6;--handle:#fde047;--handle-border:#b45309;}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:#0f172a;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+.topbar{background:var(--toolbar);color:var(--toolbar-text);height:52px;display:flex;align-items:center;gap:8px;padding:0 16px;flex-shrink:0;z-index:50;box-shadow:0 2px 10px rgba(15,23,42,0.12)}
+.modegroup{display:flex;gap:5px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:4px}
+.modebtn{background:transparent;border:1px solid transparent;color:var(--toolbar-text);padding:5px 14px;border-radius:6px;font-size:13px;cursor:pointer}
+.modebtn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.modebtn:hover:not(.active){background:rgba(255,255,255,0.08)}
+.topbar span.div{color:rgba(255,255,255,0.3);font-size:11px}
+.toolgroup{display:flex;gap:5px}
+.toolbtn{background:transparent;border:1px solid transparent;color:var(--toolbar-text);height:36px;padding:0 9px;border-radius:7px;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:background .12s}
+.toolbtn span{font-size:11.5px;font-weight:600}
+.toolbtn.sq{width:38px;padding:0}
+.toolbtn:active{transform:translateY(1px)}
+.playbtn{background:var(--success);color:#fff;border:none;height:36px;padding:0 14px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s}
+.playbtn:hover{background:#0d9f78}
+.playbtn:active{transform:translateY(1px)}
+.statsbar{display:flex;gap:16px;margin-right:4px}
+.stat{display:flex;flex-direction:column;align-items:center;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;line-height:1.15}
+.stat b{font-size:15px;color:#f8fafc;font-weight:700;font-variant-numeric:tabular-nums}
+.toolbtn.active{background:var(--accent);box-shadow:0 0 0 2px var(--accent);color:#fff}
+.toolbtn:hover:not(.active){background:rgba(255,255,255,0.08)}
+.topbar .spacer{flex:1}
+.workspace{display:flex;flex:1;overflow:hidden}
+.sidepanel{width:340px;background:var(--panel);border-left:1px solid var(--panel-border);box-shadow:0 4px 20px rgba(15,23,42,0.06);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto}
+.canvasarea{flex:1;position:relative;background:var(--canvas-bg);overflow:auto;display:flex;align-items:center;justify-content:center}
+canvas{max-width:100%;height:auto;cursor:crosshair;display:block;background:var(--canvas-bg);box-shadow:inset 0 0 0 1px #eef2f7}
+.section{padding:11px 14px;border-bottom:1px solid var(--panel-border)}
+.section:last-child{border-bottom:none}
+.section h3{margin:0 0 9px 0;font-size:12px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:600}
+.row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.row label{font-size:12px;flex-shrink:0;color:#334155;width:84px}
+input[type=number]{width:66px;padding:4px 7px;font-size:12px;border:1px solid var(--panel-border);border-radius:5px;background:#fff;color:#0f172a}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(59,130,246,.18)}
+button{width:100%;padding:6px 10px;font-size:12.5px;border:1px solid var(--panel-border);border-radius:6px;background:#fff;cursor:pointer;color:#0f172a}
+button:hover{background:#f8fafc;border-color:#cbd5e1}
+button.primary{background:var(--success);color:#fff;border-color:var(--success)}
+button.primary:hover{background:#0d9f78}
+button.danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+button.danger:hover{background:#dc2626}
+button.secondary{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.secondary:hover{background:#2563eb}
+button:disabled{opacity:.4;cursor:default}
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#334155;margin-bottom:6px}
+.checkbox-row input{accent-color:var(--accent);width:15px;height:15px}
+.selectbox{width:100%;padding:4px 7px;font-size:12px;border:1px solid var(--panel-border);border-radius:5px;background:#fff;color:#0f172a}
+.small{font-size:11px;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px}
+.statusbar{height:26px;background:#e2e8f0;color:#334155;font-size:12px;padding:0 14px;display:flex;align-items:center;flex-shrink:0;border-top:1px solid var(--panel-border)}
+.keynote{font-size:11px;color:var(--muted);font-style:italic;margin-top:6px;line-height:1.4}
+.togglebox{border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;margin-bottom:8px;background:#f8fafc}
+.togglebox h4{margin:0 0 7px 0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.modebtn{white-space:nowrap;padding:5px 10px}
+.modegroup{flex-shrink:0}
+.studypanel{width:440px;background:var(--panel);border-left:1px solid var(--panel-border);box-shadow:0 4px 20px rgba(15,23,42,0.06);display:none;flex-direction:column;flex-shrink:0;overflow-y:auto}
+table.st{width:100%;border-collapse:collapse;font-size:11.5px;margin:6px 0 2px 0}
+table.st th,table.st td{padding:3px 4px;text-align:right;border-bottom:1px solid var(--panel-border);font-weight:400}
+table.st th{color:var(--muted);font-weight:600}
+table.st th:first-child,table.st td:first-child{text-align:left}
+h4.sth{margin:12px 0 2px 0;font-size:12.5px;color:#0f172a}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+#studyPanel canvas{display:block;max-width:100%}
+[hidden]{display:none!important}
+.speedlbl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;margin-left:6px}
+.speedlbl select{background:#334155;color:#f8fafc;border:1px solid #475569;border-radius:6px;padding:4px 6px;font-size:12px}
+.zoombar{position:absolute;right:14px;bottom:14px;display:flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--panel-border);border-radius:8px;padding:4px;box-shadow:0 4px 14px rgba(15,23,42,.12);z-index:5}
+.zoombar button{width:30px;height:28px;padding:0;font-size:16px;font-weight:600;line-height:1}
+.zoombar button.wide{width:auto;padding:0 9px;font-size:12px}
+.zoombar span{min-width:44px;text-align:center;font-size:12px;color:#334155;font-variant-numeric:tabular-nums}
+.topbar button{width:auto}
+.lead{font-size:12.5px;color:#334155;line-height:1.45;margin:0 0 10px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.grid2 button,.grid3 button{margin:0}
+.field{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
+.field input[type=number]{width:100%}
+details{margin-top:8px;border:1px solid var(--panel-border);border-radius:7px;padding:6px 9px;background:#f8fafc}
+details>summary{cursor:pointer;font-size:12px;font-weight:600;color:#334155;list-style:none}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:'▸';display:inline-block;width:14px;color:var(--muted)}
+details[open]>summary::before{content:'▾'}
+details[open]>summary{margin-bottom:8px}
+button.big{padding:9px 10px;font-size:13.5px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:#334155;margin-top:4px}
+.chips span{display:inline-flex;align-items:center;gap:5px}
+.chips i{display:inline-block;width:9px;height:9px;border-radius:50%}
+.sechead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.sechead h3{margin:0}
+.sechead button{width:auto;padding:3px 9px;font-size:11.5px}
+`;
+document.getElementById('theme').textContent=CSS;
+const TOPBAR=`<div class="topbar"><div class="modegroup"><button class="modebtn active" id="modeEdit" onclick="app.setMode('edit')">&#9998; Edit Map</button><button class="modebtn" id="modeSim" onclick="app.setMode('sim')">&#9654; Simulate</button><button class="modebtn" id="modeStudy" onclick="app.setMode('study')">&#128202; Study</button></div><span class="div" data-show="edit">|</span><div class="toolgroup" data-show="edit"><button class="toolbtn active" id="toolSelect" title="Select / move / resize (1)" onclick="app.setTool('select')">&#128433;<span>Select</span></button><button class="toolbtn" id="toolWall" title="Draw wall — drag a line, hold Shift to snap axis (2)" onclick="app.setTool('wall')">&#128208;<span>Wall</span></button><button class="toolbtn" id="toolExit" title="Place exit — drag a zone (3)" onclick="app.setTool('exit')">&#128682;<span>Exit</span></button><button class="toolbtn" id="toolSafe" title="Place safe zone — drag a zone (4)" onclick="app.setTool('safe')">&#128737;<span>Safe</span></button><button class="toolbtn" id="toolStart" title="Draw start zone: where evacuees begin (8)" onclick="app.setTool('start')">&#127968;<span>Start</span></button><button class="toolbtn" id="toolRoom" title="Draw a room: drag a box to get 4 walls with doors (9)" onclick="app.setTool('room')">&#9634;<span>Room</span></button><button class="toolbtn" id="toolParticle" title="Place particle — click canvas (5)" onclick="app.setTool('particle')">&#128330;<span>Particle</span></button><span class="div">|</span><button class="toolbtn" id="btnUndo" title="Undo (Ctrl+Z)" onclick="app.undo()" disabled>&#8630;<span>Undo</span></button><button class="toolbtn" id="btnRedo" title="Redo (Ctrl+Y)" onclick="app.redo()" disabled>&#8631;<span>Redo</span></button></div><span class="div" data-show="sim">|</span><button class="playbtn" id="btnRun" data-show="sim" title="Run / Pause (Space)" onclick="app.toggleRun()">&#9658; Run</button><button class="toolbtn sq" id="btnStep" data-show="sim" title="Step 1 iter" onclick="app.stepSim()">&#9197;</button><button class="toolbtn sq" id="btnReset" data-show="sim" title="Reset sim" onclick="app.resetSim()">&#8634;</button><label data-show="sim" class="speedlbl" title="Playback speed. 1x = real time (one step = walking the max velocity at 1.3 m/s)">Speed <select id="simSpeed"><option value="0.5">0.5x</option><option value="1">1x (real time)</option><option value="2">2x</option><option value="5" selected>5x</option><option value="10">10x</option><option value="20">20x</option><option value="max">Max</option></select></label><div class="spacer"></div><div class="statsbar" data-show="sim"><span class="stat"><b id="statParticles">0</b>particles</span><span class="stat"><b id="statIter">0</b>steps</span><span class="stat"><b id="statEvac">0</b>evacuated</span></div></div>`;
+document.getElementById('topbar').innerHTML=TOPBAR;
+
+const SIDEPANEL=`<div class="section" data-show="edit"><h3>Edit map</h3>
+<p class="lead" style="margin:0">Pick a tool in the top bar and draw on the map. Drag to move, right-click to delete, Ctrl+Z to undo.</p></div>
+<div class="section" id="mapSec" data-show="edit study"><h3>Map</h3>
+<div class="grid2"><button id="stDemoBtn" title="3 rooms, 3 exits, 1 assembly area">Demo</button><button id="stCollegeBtn" title="College from the escape plans">College</button></div>
+<div class="grid3" data-show="edit" style="margin-top:6px"><button onclick="app.saveMap()">Save</button><button onclick="app.loadMap()">Open</button><button onclick="app.clearMap()">Clear</button></div>
+<div class="row" style="margin:10px 0 0"><label style="width:auto">Scale (px per metre)</label><input type="number" id="stScale" value="20" step="1"></div><div class="hint" style="margin-top:2px">Sets real sizes: walking distances, door widths (capacity), room doors. Demo 20, College 9.</div></div>
+<div class="section" id="roomSec" data-show="edit" data-tool="room"><h3>Room tool</h3>
+<div class="grid2"><label class="field">Doors on top<input type="number" id="roomTop" value="0" min="0" max="4" step="1"></label><label class="field">Doors on bottom<input type="number" id="roomBottom" value="1" min="0" max="4" step="1"></label>
+<label class="field">Doors on left<input type="number" id="roomLeft" value="0" min="0" max="4" step="1"></label><label class="field">Doors on right<input type="number" id="roomRight" value="0" min="0" max="4" step="1"></label>
+<label class="field">Door width (m)<input type="number" id="roomDoorW" value="1.5" min="1.5" step="0.5"></label><label class="field">Door type<select class="selectbox" id="roomDoorType"><option value="open">Opening</option><option value="exit">Building exit</option></select></label></div>
+<details><summary>How rooms work</summary><div class="hint" style="margin-top:0">Drag a box to get 4 walls with these doors. <b>Opening</b>: a gap people walk through. <b>Building exit</b>: people leave the building there (it gets a queue in Study). Drag any wall to move the whole room; deleting one wall deletes the room. Keep corridors at least 1.5 m wide.</div></details></div>
+<div class="section" id="dropSec" data-show="edit" data-tool="particle"><h3>Particle tool</h3>
+<div class="grid2"><label class="field">Dots per click<input type="number" id="dropN" value="10" min="1" max="500" step="1"></label><label class="field">Spread (m)<input type="number" id="dropR" value="2" min="0.2" step="0.5"></label></div>
+<div class="hint">Each click drops this many people around the cursor, inside the room you click (never through a wall).</div></div>
+<div class="section" id="snapSec" data-show="edit"><h3>Snapping</h3>
+<div class="checkbox-row"><input type="checkbox" id="snapObj" checked><label>Lock onto walls, corners and edges</label></div>
+<div class="checkbox-row"><input type="checkbox" id="snapGrid"><label>Snap to grid (10 px)</label></div>
+<div class="hint" style="margin-top:2px">Orange guides show what it locked onto. Exits drawn across a wall centre themselves on it. Hold <b>Alt</b> to place freely.</div></div>
+<div class="section" id="selSec" data-show="edit" data-needsel="1"><h3>Selected object</h3><div id="selKind" class="small" style="font-weight:600;margin-bottom:6px">-</div>
+<div class="grid2"><label class="field">X<input type="number" id="selX" step="1" onchange="app.applySelTransform()"></label><label class="field">Y<input type="number" id="selY" step="1" onchange="app.applySelTransform()"></label>
+<label class="field">W<input type="number" id="selW" step="1" onchange="app.applySelSize()"></label><label class="field">H<input type="number" id="selH" step="1" onchange="app.applySelSize()"></label></div>
+<button class="danger" style="margin-top:8px;" onclick="app.deleteSelected()">Delete selected</button></div>
+<div class="section" data-show="edit"><details style="margin-top:0"><summary>Keyboard shortcuts</summary><div class="hint" style="margin-top:0">Tools: <b>1</b> Select, <b>2</b> Wall (hold Shift to snap), <b>3</b> Exit, <b>4</b> Safe, <b>5</b> Particle, <b>8</b> Start, <b>9</b> Room. <b>Del</b> deletes the selection. <b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo.</div></details></div>
+<div class="section" data-show="sim"><h3>Simulate</h3>
+<p class="lead">The crowd-movement level: each person is a dot moving step by step, steered by PSO and Boids flocking. Use it to <b>watch an exit plan</b>, see <b>how crowded each door gets</b>, and run the <b>crowding experiment</b>. Times, lines and statistics come from <b>Study</b>.</p>
+<p class="lead" style="margin:0">Press <b>Run</b> in the top bar (pick a <b>Speed</b>; 1x = real time). <b>Reset</b> puts the dots back.</p>
+<details><summary>PSO settings</summary><div class="row"><label>Inertia w</label><input type="number" id="psoW" step="0.1" value="0.7"></div><div class="row"><label>Cognitive c1</label><input type="number" id="psoC1" step="0.1" value="1.4"></div><div class="row"><label>Social c2</label><input type="number" id="psoC2" step="0.1" value="1.4"></div><div class="row"><label>Max velocity</label><input type="number" id="psoMaxV" step="0.5" value="10"></div></details>
+<details><summary>Boids flocking</summary><div class="checkbox-row"><input type="checkbox" id="boidsOn" checked onchange="app.applyBoids()"><label>Enable boids</label></div><div class="row"><label>Separation</label><input type="number" id="boidSep" step="0.1" value="1.6"></div><div class="row"><label>Alignment</label><input type="number" id="boidAli" step="0.1" value="0.6"></div><div class="row"><label>Cohesion</label><input type="number" id="boidCoh" step="0.1" value="0.8"></div><div class="row"><label>Neighbor radius</label><input type="number" id="boidRadius" step="10" value="70"></div><div class="row"><label>Wall repel</label><input type="number" id="wallRepel" step="0.1" value="2.2"></div><div class="hint" style="margin-top:0">Wall repel 0 = no wall avoidance. Changes apply immediately.</div></details>
+<details><summary>Overlays</summary><div class="hint" style="margin-top:0">Keys: <b>V</b> velocity, <b>P</b> personal best, <b>G</b> group best, <b>B</b> boids links. <b>Space</b> runs or pauses.</div></details></div>
+<div class="section" id="simPlanSec" data-show="sim"><h3>Exit plan</h3>
+<label class="field">Which exit people use<select class="selectbox" id="simPlan"><option value="route">Shortest route to a safe zone</option><option value="nearest">Nearest exit (drill advice)</option><option value="pso">PSO plan (from Study)</option></select></label>
+<div class="checkbox-row" style="margin-top:8px"><input type="checkbox" id="simDelay" checked><label>Reaction delay 10-30 s (as in Study)</label></div>
+<div class="hint" id="simPlanHint"></div><div id="simStats" class="small" style="margin-top:8px"></div></div>
+<div class="section" id="simExpSec" data-show="sim"><h3>Crowding experiment</h3>
+<p class="lead">Runs Simulate with Boids several times from the same start positions, once with <b>nearest exit</b> and once with the <b>PSO plan</b>, and compares how crowded the doors get. People: your placed dots, or Study's <b>Evacuees</b> placed in the Start zones (the crowd size the PSO plan was optimised for).</p>
+<div class="hint" id="simExpWho" style="margin:0 0 6px"></div><label class="field" style="max-width:50%">Paired runs<input type="number" id="simExpR" value="8" step="1"></label>
+<button class="primary" id="simExpBtn" style="margin-top:8px">Compare nearest vs PSO</button>
+<progress id="simExpBar" max="1" value="0" style="width:100%;margin-top:6px" hidden></progress><div id="simExpOut" class="small"></div></div>`;
+document.getElementById('sidePanel').innerHTML=SIDEPANEL;
+
+const CANVAS_W=1300,CANVAS_H=820,MIN_RECT=16,HANDLE=7,RADIUS=7;
+const state={mode:'edit',tool:'select',walls:[],exits:[],safes:[],starts:[],particles:[],selected:null,drag:null,running:false,animId:null,iter:0,pso:{w:0.7,c1:1.4,c2:1.4,maxV:10,iters:2},boids:{on:true,sep:1.6,ali:0.6,coh:0.8,radius:70},wallAvoid:true,wallRepel:2.2,showVel:true,showPbest:true,showGbest:true,showBoids:true};
+function rand(a,b){return Math.random()*(b-a)+a;}
+function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v));}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function rectContains(r,p){return p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h;}
+function rectDist(r,p){const cx=Math.max(r.x,Math.min(p.x,r.x+r.w)),cy=Math.max(r.y,Math.min(p.y,r.y+r.h));return Math.hypot(p.x-cx,p.y-cy);}
+function centerOf(r){return{x:r.x+r.w/2,y:r.y+r.h/2};}
+function segDistToPoint(ax,ay,bx,by,px,py){const L2=(bx-ax)**2+(by-ay)**2;if(L2===0)return Math.hypot(px-ax,py-ay);let t=((px-ax)*(bx-ax)+(py-ay)*(by-ay))/L2;t=clamp(t,0,1);return Math.hypot(px-(ax+t*(bx-ax)),py-(ay+t*(by-ay)));}
+function segClosest(w,p){const vx=w.x2-w.x1,vy=w.y2-w.y1,L2=vx*vx+vy*vy;let t=L2?((p.x-w.x1)*vx+(p.y-w.y1)*vy)/L2:0;t=clamp(t,0,1);return{x:w.x1+t*vx,y:w.y1+t*vy};}
+function pushOutOfWalls(pos,walls,radius,iters=3){for(let k=0;k<iters;k++){let moved=false;for(const w of (walls===state.walls?wallsNear(pos.x-radius*4-12,pos.y-radius*4-12,pos.x+radius*4+12,pos.y+radius*4+12):walls)){if(w.w&&w.h){const r={x:w.x-radius,y:w.y-radius,w:w.w+2*radius,h:w.h+2*radius};if(rectContains(r,pos)){const cx=r.x+r.w/2,cy=r.y+r.h/2;const ox=Math.min(pos.x-r.x,r.x+r.w-pos.x),oy=Math.min(pos.y-r.y,r.y+r.h-pos.y);if(ox<=oy)pos.x=pos.x<cx?r.x-0.01:r.x+r.w+0.01;else pos.y=pos.y<cy?r.y-0.01:r.y+r.h+0.01;moved=true;}}else{const q=segClosest(w,pos),d=Math.hypot(pos.x-q.x,pos.y-q.y);if(d<radius){let dx,dy;if(d>1e-6){dx=(pos.x-q.x)/d;dy=(pos.y-q.y)/d;}else{const L=Math.hypot(w.x2-w.x1,w.y2-w.y1)||1;dx=-(w.y2-w.y1)/L;dy=(w.x2-w.x1)/L;}pos.x+=dx*(radius-d+0.5);pos.y+=dy*(radius-d+0.5);moved=true;}}}if(!moved)break;}return pos;}
+
+/* ---- Simulate mode: wall-aware navigation. Walking distance around walls on a 10 px grid. ---- */
+const SIM_GUIDE=1.5; // strength of the pull along the walking path (px per step)
+const SIMNAV={key:null,W:0,H:0,wall:null,fields:new Map()};
+function simNavBuild(){
+  const key=JSON.stringify([state.walls,state.exits,state.safes]);if(key===SIMNAV.key&&state.exits.every(e=>e.blocked||SIMNAV.fields.has(e))&&state.safes.every(t=>SIMNAV.fields.has(t)))return;
+  const C=10,W=Math.floor(CANVAS_W/C),H=Math.floor(CANVAS_H/C),N=W*H,wall=new Uint8Array(N);
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C;for(const w of state.walls){
+    if(w.w&&w.h){if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h){wall[r*W+c]=1;break;}}
+    else if(segDistToPoint(w.x1,w.y1,w.x2,w.y2,x,y)<=C/2+0.01){wall[r*W+c]=1;break;}}}
+  const tg=[...state.exits.filter(e=>!e.blocked),...state.safes],cellsOf=new Map();
+  for(const e of state.exits)if(e.blocked)for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C;if(x>=e.x&&x<=e.x+e.w&&y>=e.y&&y<=e.y+e.h)wall[r*W+c]=1;}   // closed door
+  for(const t of tg){const cs=[];for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C;if(x>=t.x&&x<=t.x+t.w&&y>=t.y&&y<=t.y+t.h){wall[r*W+c]=0;cs.push(r*W+c);}}
+    if(!cs.length){const c=clamp(Math.floor((t.x+t.w/2)/C),0,W-1),r=clamp(Math.floor((t.y+t.h/2)/C),0,H-1);wall[r*W+c]=0;cs.push(r*W+c);}cellsOf.set(t,cs);}
+  const g={W,H,N,wall,cellM:C},fields=new Map(),open=tg.filter(t=>state.exits.includes(t));
+  // the walk to an exit may not pass through another exit (out of the building and back in); safe zones may be reached through any open exit
+  for(const t of tg){let gg=g;if(open.includes(t)){const wl=wall.slice();for(const o of open)if(o!==t)for(const i of cellsOf.get(o))wl[i]=1;gg={W,H,N,wall:wl,cellM:C};}fields.set(t,stDistField(gg,cellsOf.get(t)));}
+  // people who can reach a safe zone with every exit closed are outside the building
+  let direct=null;const sc=[];for(const z of state.safes)for(const i of cellsOf.get(z))sc.push(i);
+  if(sc.length){const wl=new Uint8Array(N);for(let i=0;i<N;i++)wl[i]=wall[i];for(const e of state.exits)if(!e.blocked)for(const i of cellsOf.get(e))wl[i]=1;for(const i of sc)wl[i]=0;direct=stDistField({W,H,N,wall:wl,cellM:C},sc);}
+  Object.assign(SIMNAV,{key,W,H,wall,fields,direct});}
+function simUnstick(a){const W=SIMNAV.W,H=SIMNAV.H,i=simCell(a),r0=(i/W)|0,c0=i-r0*W;let best=null,bd=Infinity;
+  for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const r=r0+dr,c=c0+dc;if(r<0||r>=H||c<0||c>=W||SIMNAV.wall[r*W+c])continue;const q={x:(c+.5)*10,y:(r+.5)*10},d=Math.hypot(q.x-a.x,q.y-a.y);
+    if(d>0.5&&d<bd&&!moveCrossesWall(a,q)){bd=d;best=q;}}
+  return best;}
+function simCell(pos){return clamp(Math.floor(pos.y/10),0,SIMNAV.H-1)*SIMNAV.W+clamp(Math.floor(pos.x/10),0,SIMNAV.W-1);}
+// walking distance (px) from pos to a target rect, going around walls. Smooth inside a cell: the best of
+// (straight distance to a visible nearby open cell + walking distance from that cell), so any step closer scores better
+function simGeo(pos,rect){
+  if(rectContains(rect,pos))return 0;const f=SIMNAV.fields.get(rect);if(!f)return dist(pos,centerOf(rect));
+  const W=SIMNAV.W,H=SIMNAV.H,wall=SIMNAV.wall,i=simCell(pos),r=(i/W)|0,c=i-r*W;let best=Infinity;
+  for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const nr=r+dr,nc=c+dc;if(nr<0||nr>=H||nc<0||nc>=W)continue;const ni=nr*W+nc;
+    if(wall[ni]||!isFinite(f[ni]))continue;const tx=(nc+.5)*10,ty=(nr+.5)*10,v=f[ni]+Math.hypot(tx-pos.x,ty-pos.y);
+    if(v<best&&(Math.abs(dr)+Math.abs(dc)<=1||!moveCrossesWall(pos,{x:tx,y:ty})))best=v;}
+  best=Math.min(best,rectDist(rect,pos)<=20&&!moveCrossesWall(pos,centerOf(rect))?rectDist(rect,pos):Infinity);
+  return isFinite(best)?best:1e6+dist(pos,centerOf(rect));}
+// unit vector toward the best nearby open cell: among open cells within 2 cells that the dot can reach in a
+// straight line without touching a wall, pick the one with the smallest (distance to it + walking distance left)
+function simDownhill(pos,rect){
+  const f=SIMNAV.fields.get(rect);if(!f)return null;const W=SIMNAV.W,H=SIMNAV.H,wall=SIMNAV.wall,i=simCell(pos),r=(i/W)|0,c=i-r*W;
+  let best=isFinite(f[i])&&!wall[i]?f[i]+Math.hypot((c+.5)*10-pos.x,(r+.5)*10-pos.y):Infinity,bx=0,by=0,found=false;
+  for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){if(!dr&&!dc)continue;const nr=r+dr,nc=c+dc;if(nr<0||nr>=H||nc<0||nc>=W)continue;const ni=nr*W+nc;
+    if(wall[ni]||!isFinite(f[ni]))continue;const tx=(nc+.5)*10,ty=(nr+.5)*10,v=f[ni]+Math.hypot(tx-pos.x,ty-pos.y);
+    if(v<best-1e-9&&!moveCrossesWall(pos,{x:tx,y:ty})){best=v;bx=tx;by=ty;found=true;}}
+  if(!found)return null;const dx=bx-pos.x,dy=by-pos.y,L=Math.hypot(dx,dy)||1;return{x:dx/L,y:dy/L};}
+function segCross(ax,ay,bx,by,cx,cy,dx,dy){
+  const d1=(bx-ax)*(cy-ay)-(by-ay)*(cx-ax),d2=(bx-ax)*(dy-ay)-(by-ay)*(dx-ax),d3=(dx-cx)*(ay-cy)-(dy-cy)*(ax-cx),d4=(dx-cx)*(by-cy)-(dy-cy)*(bx-cx);
+  return((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0));}
+// true if the straight step from a to b passes through any wall
+function inExitRect(x,y,pad=2){for(const e of state.exits)if(!e.blocked&&x>=e.x-pad&&x<=e.x+e.w+pad&&y>=e.y-pad&&y<=e.y+e.h+pad)return true;return false;}
+function segHitPoint(ax,ay,bx,by,cx,cy,dx,dy){const r1=bx-ax,r2=by-ay,s1=dx-cx,s2=dy-cy,den=r1*s2-r2*s1;if(!den)return null;const t=((cx-ax)*s2-(cy-ay)*s1)/den;return{x:ax+t*r1,y:ay+t*r2};}
+/* spatial index of walls, rebuilt at the start of every Simulate step (walls can be edited between steps) */
+const WGRID={on:false,cs:40,m:null,stamp:0};
+function wgridBuild(){const cs=WGRID.cs,m=new Map();WGRID.list=state.walls;WGRID.seen=new Int32Array(state.walls.length);state.walls.forEach((w,wi)=>{let lx,hx,ly,hy;if(w.x1!==undefined){lx=Math.min(w.x1,w.x2);hx=Math.max(w.x1,w.x2);ly=Math.min(w.y1,w.y2);hy=Math.max(w.y1,w.y2);}else{lx=w.x;hx=w.x+w.w;ly=w.y;hy=w.y+w.h;}
+  for(let i=Math.floor(lx/cs);i<=Math.floor(hx/cs);i++)for(let j=Math.floor(ly/cs);j<=Math.floor(hy/cs);j++){const k=i*4096+j;let a=m.get(k);if(!a)m.set(k,a=[]);a.push(wi);}});WGRID.m=m;}
+// walls whose box may meet the box [lx,hx] x [ly,hy]
+function wallsNear(lx,ly,hx,hy){if(!WGRID.on||!WGRID.m||WGRID.list!==state.walls||WGRID.seen.length!==state.walls.length)return state.walls;const cs=WGRID.cs,out=[],st=++WGRID.stamp;
+  for(let i=Math.floor(lx/cs);i<=Math.floor(hx/cs);i++)for(let j=Math.floor(ly/cs);j<=Math.floor(hy/cs);j++){const a=WGRID.m.get(i*4096+j);if(a)for(const wi of a)if(WGRID.seen[wi]!==st){WGRID.seen[wi]=st;out.push(WGRID.list[wi]);}}
+  return out;}
+function moveCrossesWall(a,b){
+  const lx=Math.min(a.x,b.x)-1,hx=Math.max(a.x,b.x)+1,ly=Math.min(a.y,b.y)-1,hy=Math.max(a.y,b.y)+1;
+  for(const w of wallsNear(lx,ly,hx,hy)){
+    if(w.x1!==undefined){if(Math.max(w.x1,w.x2)<lx||Math.min(w.x1,w.x2)>hx||Math.max(w.y1,w.y2)<ly||Math.min(w.y1,w.y2)>hy)continue;}
+    else if(w.x+w.w<lx||w.x>hx||w.y+w.h<ly||w.y>hy)continue;
+    if(w.w&&w.h){if(rectContains(w,b))return true;const E=[[w.x,w.y,w.x+w.w,w.y],[w.x+w.w,w.y,w.x+w.w,w.y+w.h],[w.x+w.w,w.y+w.h,w.x,w.y+w.h],[w.x,w.y+w.h,w.x,w.y]];
+      for(const s of E)if(segCross(a.x,a.y,b.x,b.y,s[0],s[1],s[2],s[3]))return true;}
+    else if(segCross(a.x,a.y,b.x,b.y,w.x1,w.y1,w.x2,w.y2)){const h=segHitPoint(a.x,a.y,b.x,b.y,w.x1,w.y1,w.x2,w.y2);if(!(h&&inExitRect(h.x,h.y)))return true;}}
+  // a blocked exit is a closed door: solid, even if no wall line was drawn under it
+  for(const e of state.exits){if(!e.blocked||e.x>hx||e.x+e.w<lx||e.y>hy||e.y+e.h<ly)continue;if(rectContains(e,b))return true;
+    const R=[[e.x,e.y,e.x+e.w,e.y],[e.x+e.w,e.y,e.x+e.w,e.y+e.h],[e.x+e.w,e.y+e.h,e.x,e.y+e.h],[e.x,e.y+e.h,e.x,e.y]];for(const q of R)if(segCross(a.x,a.y,b.x,b.y,q[0],q[1],q[2],q[3]))return true;}
+  return false;}
+
+class Particle{
+  constructor(x,y){this.pos={x,y};const a=Math.random()*Math.PI*2,s=rand(2,7);this.vel={x:Math.cos(a)*s,y:Math.sin(a)*s};this.pbest={x,y};this.pbestCost=Infinity;this.radius=RADIUS;this.targetObj=null;this.evacuated=false;}
+  targetRect(){if(this.targetObj)return this.targetObj;const safes=state.safes,exits=safes.length?[]:state.exits;if(exits.length===0&&safes.length===0)return null;let best=null,bd=Infinity;
+    // earthquake drill: if any safe zone exists, the goal is the nearest safe zone (by walking distance); exits are just doors on the way
+    for(const e of exits){const d=simGeo(this.pos,e);if(d<bd){bd=d;best=e;}}
+    for(const s of safes){const d=simGeo(this.pos,s);if(d<bd){bd=d;best=s;}}
+    return best;}
+  groupKey(){const t=this.targetRect();if(!t)return['none',0];if(state.exits.includes(t))return['exit',state.exits.indexOf(t)];if(state.safes.includes(t))return['safe',state.safes.indexOf(t)];return['none',0];}
+  cost(){const t=this.targetRect();let c=t?simGeo(this.pos,t):0;if(inExitRect(this.pos.x,this.pos.y,this.radius))return c; // in a doorway, being next to the wall is expected
+    const r=this.radius+1;for(const w of wallsNear(this.pos.x-r,this.pos.y-r,this.pos.x+r,this.pos.y+r)){const d=(w.w&&w.h)?rectDist(w,this.pos):segDistToPoint(w.x1,w.y1,w.x2,w.y2,this.pos.x,this.pos.y);if(d<this.radius)c+=1000+(this.radius-d)*50;}return c;}
+}
+function groupBests(){const groups={};for(const p of state.particles){if(p.evacuated)continue;const k=p.groupKey();(groups[k]||(groups[k]=[])).push(p);}const out={};for(const k in groups){const plist=groups[k],best=plist.reduce((a,b)=>a.pbestCost<b.pbestCost?a:b);out[k]=best.pbest;}return out;}
+function boidsForce(p){
+  if(!state.boids.on)return{x:0,y:0};let sep={x:0,y:0},ali={x:0,y:0},coh={x:0,y:0};let n=0;
+  for(const q of boidsCandidates(p)){if(q===p||q.evacuated)continue;const d=dist(p.pos,q.pos);if(d>0&&d<state.boids.radius){n++;sep.x+=(p.pos.x-q.pos.x)/d;sep.y+=(p.pos.y-q.pos.y)/d;ali.x+=q.vel.x;ali.y+=q.vel.y;coh.x+=q.pos.x;coh.y+=q.pos.y;}}
+  if(n===0)return{x:0,y:0};sep.x/=n;sep.y/=n;ali.x/=n;ali.y/=n;coh.x/=n;coh.y/=n;
+  const sepL=Math.hypot(sep.x,sep.y);if(sepL>0){sep.x=sep.x/sepL*state.boids.radius/60;sep.y=sep.y/sepL*state.boids.radius/60;}
+  const aliDesired={x:ali.x-p.vel.x,y:ali.y-p.vel.y};const aliL=Math.hypot(aliDesired.x,aliDesired.y);if(aliL>0){aliDesired.x=aliDesired.x/aliL*state.pso.maxV/3;aliDesired.y=aliDesired.y/aliL*state.pso.maxV/3;}
+  const cohDesired={x:coh.x-p.pos.x,y:coh.y-p.pos.y};const cohL=Math.hypot(cohDesired.x,cohDesired.y);if(cohL>0){cohDesired.x=cohDesired.x/cohL*state.boids.radius/60;cohDesired.y=cohDesired.y/cohL*state.boids.radius/60;}
+  if(state.showBoids)boidsVis.push({pos:{x:p.pos.x,y:p.pos.y},links:boidsNeighbors(p),steer:{x:sep.x*state.boids.sep+aliDesired.x*state.boids.ali+cohDesired.x*state.boids.coh,y:sep.y*state.boids.sep+aliDesired.y*state.boids.ali+cohDesired.y*state.boids.coh}});
+  return{x:sep.x*state.boids.sep+aliDesired.x*state.boids.ali+cohDesired.x*state.boids.coh,y:sep.y*state.boids.sep+aliDesired.y*state.boids.ali+cohDesired.y*state.boids.coh};
+}
+let boidsVis=[];
+// spatial grid for boids: cell size = neighbour radius + a margin for movement during the iteration
+const BGRID={cs:0,m:null};
+function boidsGridBuild(){const cs=state.boids.radius+2*state.pso.maxV+2,m=new Map();for(const q of state.particles){if(q.evacuated)continue;const k=Math.floor(q.pos.x/cs)*4096+Math.floor(q.pos.y/cs);let a=m.get(k);if(!a)m.set(k,a=[]);a.push(q);}BGRID.cs=cs;BGRID.m=m;}
+function boidsCandidates(p){if(!BGRID.m)return state.particles;const cs=BGRID.cs,cx=Math.floor(p.pos.x/cs),cy=Math.floor(p.pos.y/cs),out=[];
+  for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){const a=BGRID.m.get((cx+i)*4096+(cy+j));if(a)for(const q of a)out.push(q);}return out;}
+function boidsNeighbors(p){const out=[];for(const q of boidsCandidates(p)){if(q===p||q.evacuated)continue;if(dist(p.pos,q.pos)<state.boids.radius)out.push(q.pos);}return out;}
+function wallAvoidForce(p){if(!state.wallAvoid||inExitRect(p.pos.x,p.pos.y,RADIUS*3))return{x:0,y:0};let ax=0,ay=0;const R5=RADIUS*5+1;
+  for(const w of wallsNear(p.pos.x-R5,p.pos.y-R5,p.pos.x+R5,p.pos.y+R5)){let d,dx=0,dy=0;
+    if(w.w&&w.h){d=rectDist(w,p.pos);const cx=Math.max(w.x,Math.min(p.pos.x,w.x+w.w)),cy=Math.max(w.y,Math.min(p.pos.y,w.y+w.h));dx=p.pos.x-cx;dy=p.pos.y-cy;}
+    else{const q=segClosest(w,p.pos);d=Math.hypot(p.pos.x-q.x,p.pos.y-q.y);if(d>1e-6){dx=(p.pos.x-q.x)/d;dy=(p.pos.y-q.y)/d;}}
+    if(d>0&&d<RADIUS*5){const f=(RADIUS*5-d)/(RADIUS*5);ax+=dx*f*state.wallRepel;ay+=dy*f*state.wallRepel;}}
+  return{x:ax,y:ay};
+}
+/* ===================== Simulate: exit plan (from Study), door usage, crowding ===================== */
+// start positions for the experiment: the placed dots, or n random points inside the Start zones
+function simStartPoints(n,rng){
+  if(state.particles.length)return state.particles.map(p=>({x:(p.home||p.pos).x,y:(p.home||p.pos).y}));
+  const Z=state.starts,A=Z.map(z=>z.w*z.h),T=A.reduce((a,b)=>a+b,0),pts=[];if(!Z.length||!T)return pts;
+  const ok=q=>state.walls.every(w=>((w.w&&w.h)?rectDist(w,q):segDistToPoint(w.x1,w.y1,w.x2,w.y2,q.x,q.y))>=RADIUS+2)&&!inExitRect(q.x,q.y,RADIUS);
+  let tries=0;while(pts.length<n&&tries<n*200){tries++;let u=rng()*T,k=0;while(u>A[k]){u-=A[k];k++;}const z=Z[k],q={x:z.x+rng()*z.w,y:z.y+rng()*z.h};if(ok(q))pts.push(q);}
+  return pts;}
+// one Simulate run from given start points with a given plan; Math.random is seeded so both plans get the same randomness
+function simRunOnce(pts,plan,seed,maxSteps=3000){
+  const saveR=Math.random;Math.random=mulberry32(seed);
+  try{state.particles=pts.map(q=>new Particle(q.x,q.y));state.iter=0;SIMX.stats=null;
+    SIMX.force=plan;let steps=0;while(steps<maxSteps&&state.particles.some(p=>!p.evacuated)){psoStep(1);steps++;}
+    const S=SIMX.stats;
+    return{steps,done:state.particles.every(p=>p.evacuated),peak:S.peak.slice(),used:S.used.slice(),outside:S.outside,peakMax:Math.max(0,...S.peak),expo:S.expo.reduce((a,b)=>a+b,0)};}
+  finally{Math.random=saveR;SIMX.force=null;}}
+async function simExperiment(n,R,onProg){
+  const pen=simPsoPen();if(!pen)throw new Error('Run the study first (Study mode): the PSO plan comes from it.');
+  const keep={particles:state.particles,iter:state.iter,mode:state.mode,running:state.running,showBoids:state.showBoids,stats:SIMX.stats};
+  state.running=false;state.showBoids=false;const out={nearest:[],pso:[],n:0,R,boids:state.boids.on,delay:simDelayOn()};
+  try{for(let r=0;r<R;r++){const rng=mulberry32(5000+r);state.particles=keep.particles;const pts=simStartPoints(n,rng);if(!pts.length)throw new Error('No people: place dots, or draw Start zones.');out.n=pts.length;
+      for(const plan of ['nearest','pso'])out[plan].push(simRunOnce(pts,plan,9000+r));
+      if(onProg)onProg(r+1,R);await new Promise(res=>setTimeout(res,0));}}
+  finally{state.particles=keep.particles;state.iter=keep.iter;state.showBoids=keep.showBoids;SIMX.stats=keep.stats;}
+  return out;}
+function simExperimentHtml(X){
+  const m=a=>a.reduce((p,q)=>p+q,0)/a.length,f=(a,k)=>stSummary(a.map(r=>r[k])),fmt=s=>s.mean.toFixed(1)+' &plusmn; '+s.ci.toFixed(1);
+  const cmp=k=>{const d=X.pso.map((r,i)=>r[k]-X.nearest[i][k]);return{p:stWilcoxon(d),better:d.filter(v=>v<0).length,worse:d.filter(v=>v>0).length,pct:100*stSummary(d).mean/(stSummary(X.nearest.map(r=>r[k])).mean||1)};},cP=cmp('peakMax'),cE=cmp('expo'),pv=v=>v<0.001?'<0.001':v.toFixed(3);
+  const E=state.exits.length,useAvg=pl=>state.exits.map((e,k)=>exitName(k)+' '+m(X[pl].map(r=>r.used[k])).toFixed(0)).join(', ');
+  const peakDoor=pl=>state.exits.map((e,k)=>exitName(k)+' '+m(X[pl].map(r=>r.peak[k])).toFixed(1)).join(', ');
+  let h=`<div style="margin:6px 0 4px">${X.n} people, ${X.R} paired runs, Boids ${X.boids?'on':'off'}, reaction delay ${X.delay?'on (10-30 s)':'off'}.</div>
+  <table class="st"><tr><th>Plan</th><th>Crowd exposure</th><th>Peak crowd, busiest door</th><th>Steps to clear</th></tr>
+  <tr><td>Nearest exit</td><td>${fmt(f(X.nearest,'expo'))}</td><td>${fmt(f(X.nearest,'peakMax'))}</td><td>${fmt(f(X.nearest,'steps'))}</td></tr>
+  <tr><td>PSO plan</td><td>${fmt(f(X.pso,'expo'))}</td><td>${fmt(f(X.pso,'peakMax'))}</td><td>${fmt(f(X.pso,'steps'))}</td></tr></table>
+  <div class="small"><b>Crowd exposure</b>: person-steps spent within ${SIMX.CROWD_M} m of any door (lower = less crowding overall). PSO ${cE.pct.toFixed(1)}%, lower in ${cE.better}/${X.R} runs, Wilcoxon p ${pv(cE.p)}.<br><b>Peak crowd</b>: most people within ${SIMX.CROWD_M} m of one door at once. PSO ${cP.pct.toFixed(1)}%, lower in ${cP.better}/${X.R}, higher in ${cP.worse}/${X.R}, p ${pv(cP.p)}. Mean &plusmn; 95% CI.</div>
+  <details><summary>Per-door detail</summary><div class="hint" style="margin-top:0"><b>People per exit</b><br>Nearest: ${useAvg('nearest')}<br>PSO: ${useAvg('pso')}<br><b>Peak crowd per door</b><br>Nearest: ${peakDoor('nearest')}<br>PSO: ${peakDoor('pso')}</div></details>`;
+  if([...X.nearest,...X.pso].some(r=>!r.done))h+='<div class="hint" style="color:#b91c1c">Some runs hit the step limit before everyone arrived.</div>';
+  return h;}
+// plan: 'route' = head for the nearest safe zone, using whatever door is on the way (default)
+//       'nearest' = go to the nearest exit first (drill advice), then to the nearest safe zone
+//       'pso' = go to the exit chosen by Study's PSO penalties, then to the nearest safe zone
+const SIMX={stats:null,CROWD_M:2};
+function simPlan(){if(SIMX.force)return SIMX.force;const el=document.getElementById('simPlan'),v=el&&el.value;return ['route','nearest','pso'].includes(v)?v:'route';}
+function geomKey(){return JSON.stringify([state.walls,state.exits.map(e=>[e.x,e.y,e.w,e.h,!!e.blocked]),state.safes]);}
+function simPsoPen(){const st=STUDY.study;if(!st||!st.conds.length||st.conds[0].plan.length!==state.exits.length||st.geomKey!==geomKey())return null;return st.conds[0].plan;}
+function simIsOutside(pos){return !!(SIMNAV.direct&&isFinite(SIMNAV.direct[simCell(pos)]));}
+function simNearestSafe(pos){let b=null,bd=Infinity;for(const z of state.safes){const d=simGeo(pos,z);if(d<bd){bd=d;b=z;}}return b;}
+function simExitOnSegment(a,b){for(let k=0;k<state.exits.length;k++){const e=state.exits[k];if(e.blocked)continue;const x0=e.x-1,y0=e.y-1,x1=e.x+e.w+1,y1=e.y+e.h+1;
+    if((a.x>=x0&&a.x<=x1&&a.y>=y0&&a.y<=y1)||(b.x>=x0&&b.x<=x1&&b.y>=y0&&b.y<=y1))return k;
+    const E=[[x0,y0,x1,y0],[x1,y0,x1,y1],[x1,y1,x0,y1],[x0,y1,x0,y0]];for(const q of E)if(segCross(a.x,a.y,b.x,b.y,q[0],q[1],q[2],q[3]))return k;}
+  return -1;}
+// exit choice for one person: 'nearest' = shortest walk to a door; 'pso' = walk to door + walk to safe zone + penalty (all in m)
+function simChooseExit(pos,plan,pen){const ppm=pxPerM();let b=-1,bd=Infinity;
+  state.exits.forEach((e,k)=>{if(e.blocked)return;let d=simGeo(pos,e);if(d>=1e6)return;
+    if(plan==='pso'){const z=simNearestSafe(centerOf(e));d=d/ppm+(z?simGeo(centerOf(e),z)/ppm:0)+(pen?pen[k]:0);}
+    if(d<bd){bd=d;b=k;}});
+  return b;}
+function simDelayOn(){if(SIMX.forceDelay!==undefined&&SIMX.forceDelay!==null)return SIMX.forceDelay;const c=document.getElementById('simDelay');return !c||c.checked===undefined?true:!!c.checked;}
+function simStepSec(){return state.pso.maxV/(pxPerM()*1.3);}   // one step = time to walk maxV px at 1.3 m/s
+function simAssign(){const plan=simPlan(),pen=plan==='pso'?simPsoPen():null,E=state.exits.length,del=simDelayOn(),ss=simStepSec();
+  SIMX.stats={plan:(plan==='pso'&&!pen)?'route':plan,used:new Array(E).fill(0),outside:0,peak:new Array(E).fill(0),near:new Array(E).fill(0),expo:new Array(E).fill(0),delay:del};
+  for(const p of state.particles){p.simStage=null;p.planExit=-1;p.usedExit=-1;p.wait=del?Math.round((10+20*Math.random())/ss):0;
+    if(p.evacuated)continue;
+    if(SIMX.stats.plan!=='route'&&E&&!simIsOutside(p.pos)){const k=simChooseExit(p.pos,SIMX.stats.plan,pen);if(k>=0){p.planExit=k;p.simStage='exit';p.targetObj=state.exits[k];continue;}}
+    p.targetObj=p.targetRect();}}
+// a person reached the target: an exit (then walk on to the nearest safe zone) or the safe zone (done)
+function simArrive(p){
+  if(p.simStage==='exit'&&state.safes.length){p.usedExit=p.planExit;p.simStage='safe';p.targetObj=simNearestSafe(p.pos);p.pbest={x:p.pos.x,y:p.pos.y};p.pbestCost=Infinity;return;}
+  if(p.simStage==='exit')p.usedExit=p.planExit;
+  p.evacuated=true;}
+function simTrack(){const S=SIMX.stats;if(!S)return;const R=SIMX.CROWD_M*pxPerM(),E=state.exits.length,ctr=state.exits.map(centerOf);S.near=new Array(E).fill(0);
+  for(const p of state.particles){if(p.evacuated)continue;
+    for(let k=0;k<E;k++)if(Math.hypot(p.pos.x-ctr[k].x,p.pos.y-ctr[k].y)<=R)S.near[k]++;}
+  for(let k=0;k<E;k++){if(S.near[k]>S.peak[k])S.peak[k]=S.near[k];S.expo[k]+=S.near[k];}
+  S.used=new Array(E).fill(0);S.outside=0;for(const p of state.particles){if(p.usedExit>=0)S.used[p.usedExit]++;else if(p.evacuated)S.outside++;}}
+function simStatsHtml(){const S=SIMX.stats,el=document.getElementById('simStats');if(!el)return;
+  if(!S||!state.exits.length){el.innerHTML='<div class="hint" style="margin-top:0">Press Run: door use and crowding appear here.</div>';return;}
+  const names={route:'Shortest route to a safe zone',nearest:'Nearest exit',pso:'PSO plan'};
+  let h=`<div style="margin-bottom:4px">Plan: <b>${names[S.plan]}</b></div><table class="st"><tr><th>Exit</th><th>People used</th><th>Peak within ${SIMX.CROWD_M} m</th></tr>`;
+  state.exits.forEach((e,k)=>{h+=`<tr><td>${exitName(k)}</td><td>${S.used[k]}</td><td>${S.peak[k]}</td></tr>`;});
+  h+=`</table>`+(S.outside?`<div class="hint">${S.outside} started outside and needed no exit.</div>`:'');el.innerHTML=h;}
+
+function psoStep(iters){wgridBuild();WGRID.on=true;try{psoStepInner(iters);}finally{WGRID.on=false;}}
+function psoStepInner(iters){
+  boidsVis=[];simNavBuild();
+  if(state.iter===0)for(const p of state.particles)if(!p.home)p.home={x:p.pos.x,y:p.pos.y}; // placed position, restored by Reset
+  if(state.iter===0||!SIMX.stats)simAssign();
+  for(const p of state.particles){if(!p.evacuated&&!p.targetObj)p.targetObj=p.targetRect();}
+  const gb=groupBests();
+  for(let it=0;it<iters;it++){
+    boidsGridBuild();
+    for(const p of state.particles){if(p.evacuated)continue;
+      if(p.wait>0){p.wait--;continue;}   // still reacting (Duck, Cover, Hold; then deciding to leave)
+      const g=gb[p.groupKey()]||p.pos;const r1=Math.random(),r2=Math.random();
+      // PSO pulls toward the personal best and the group best. If that point is behind a wall, the pull keeps its
+      // strength but follows the walking route (around walls) instead of the straight line through the wall.
+      const trP=p.targetRect(),pull=(q,k)=>{let vx=(q.x-p.pos.x)*k,vy=(q.y-p.pos.y)*k;if((vx||vy)&&trP&&moveCrossesWall(p.pos,q)){const d=simDownhill(p.pos,trP),L=Math.hypot(vx,vy);if(d){vx=d.x*L;vy=d.y*L;}else{vx=0;vy=0;}}return{x:vx,y:vy};};
+      const pa=pull(p.pbest,state.pso.c1*r1),ga=pull(g,state.pso.c2*r2);
+      p.vel.x=p.vel.x*state.pso.w+pa.x+ga.x;
+      p.vel.y=p.vel.y*state.pso.w+pa.y+ga.y;
+      const bf=boidsForce(p);p.vel.x+=bf.x;p.vel.y+=bf.y;
+      const wf=wallAvoidForce(p);p.vel.x+=wf.x;p.vel.y+=wf.y;
+      // route guidance: always pull gently along the walking path (around walls); pull harder if nearly stopped
+      const tr0=p.targetRect(),nav=()=>{if(!tr0)return null;const d=simDownhill(p.pos,tr0);if(d)return d;const tp=centerOf(tr0),dx=tp.x-p.pos.x,dy=tp.y-p.pos.y,L=Math.hypot(dx,dy);return L>0.5?{x:dx/L,y:dy/L}:null;};
+      {const d=nav();if(d){const k=Math.hypot(p.vel.x,p.vel.y)<1.5?3:SIM_GUIDE;p.vel.x+=d.x*k;p.vel.y+=d.y*k;}}
+      const L=Math.hypot(p.vel.x,p.vel.y);if(L>state.pso.maxV){p.vel.x*=state.pso.maxV/L;p.vel.y*=state.pso.maxV/L;}
+      // walls are solid: a step that would pass through a wall follows the walking path instead,
+      // then tries sliding along the wall, then stops
+      const a=p.pos;let b={x:a.x+p.vel.x,y:a.y+p.vel.y};
+      if(moveCrossesWall(a,b)){const d=nav(),sp=Math.max(3,Math.min(state.pso.maxV,Math.hypot(p.vel.x,p.vel.y)))*0.7;
+        if(d){p.vel={x:d.x*sp,y:d.y*sp};b={x:a.x+p.vel.x,y:a.y+p.vel.y};}
+        if(moveCrossesWall(a,b)){const bx={x:a.x+p.vel.x,y:a.y},by={x:a.x,y:a.y+p.vel.y};
+          if(!moveCrossesWall(a,bx)){b=bx;p.vel.y=0;}else if(!moveCrossesWall(a,by)){b=by;p.vel.x=0;}else{b={x:a.x,y:a.y};p.vel.x*=-0.3;p.vel.y*=-0.3;}}}
+      if(!inExitRect(b.x,b.y,p.radius)){const pushed=pushOutOfWalls({x:b.x,y:b.y},state.walls,p.radius);if(!moveCrossesWall(a,pushed))b=pushed;}
+      let nx=clamp(b.x,p.radius,CANVAS_W-p.radius),ny=clamp(b.y,p.radius,CANVAS_H-p.radius);
+      if(moveCrossesWall(a,{x:nx,y:ny})){nx=a.x;ny=a.y;}
+      if(p.usedExit<0&&state.exits.length){const k=simExitOnSegment(a,{x:nx,y:ny});if(k>=0)p.usedExit=k;}
+      // stall rescue: a moving dot that has not moved for 15 steps (e.g. pinned exactly on a wall corner) is placed at the
+      // centre of the nearest open grid cell that it can reach without crossing a wall
+      if(Math.hypot(nx-a.x,ny-a.y)<0.05){p.stall=(p.stall||0)+1;if(p.stall>=15){const q=simUnstick(a);if(q){nx=q.x;ny=q.y;}p.stall=0;}}else p.stall=0;
+      p.pos={x:nx,y:ny};const c=p.cost();if(c<p.pbestCost){p.pbestCost=c;p.pbest={x:nx,y:ny};}
+      const tr=p.targetRect();if(tr&&rectDist(tr,p.pos)<=p.radius)simArrive(p);}
+    simTrack();
+    state.iter++;}
+}
+
+/* ===================== ROOM tool: one drag = 4 walls with door gaps ===================== */
+let ROOM_SEQ=0;
+const ROOM_MIN_GAP=30; // px. Narrower gaps get closed by the 10 px grid that Study and Simulate use for walking around walls
+function roomOpts(){const g=id=>{const el=document.getElementById(id);return el?el.value:'';};const n=id=>clamp(Math.round(+g(id)||0),0,4);
+  const scale=+((document.getElementById('stScale')||{}).value)||20;
+  return{top:n('roomTop'),bottom:n('roomBottom'),left:n('roomLeft'),right:n('roomRight'),doorM:Math.max(0.1,+g('roomDoorW')||1.5),scale,type:g('roomDoorType')||'open'};}
+// builds the walls and (for exit doors) exit rectangles of one room; returns {walls,exits,notes}
+function buildRoom(x,y,w,h,o){
+  const id='room'+(++ROOM_SEQ)+'_'+Date.now().toString(36),gap=Math.max(ROOM_MIN_GAP,o.doorM*o.scale),walls=[],exits=[],notes=[];
+  if(gap>o.doorM*o.scale+0.5)notes.push('doors widened to '+(gap/o.scale).toFixed(1)+' m (the smallest width people can walk through on the map grid)');
+  // side: start point, unit direction, length
+  const sides=[['top',x,y,1,0,w],['bottom',x,y+h,1,0,w],['left',x,y,0,1,h],['right',x+w,y,0,1,h]];
+  for(const [name,sx,sy,dx,dy,L] of sides){
+    let n=o[name];const fit=Math.max(0,Math.floor((L-10)/(gap+10)));if(n>fit){notes.push(name+' side fits only '+fit+' door(s)');n=fit;}
+    // equal wall pieces between and around the doors (at least 10 px each, guaranteed by 'fit')
+    const piece=(L-n*gap)/(n+1),cuts=[];for(let k=0;k<n;k++){const a=piece*(k+1)+gap*k;cuts.push([a,a+gap]);}
+    let t=0;for(const [a,b] of cuts){if(a-t>0.5)walls.push({x1:sx+dx*t,y1:sy+dy*t,x2:sx+dx*a,y2:sy+dy*a,room:id});t=b;
+      if(o.type==='exit'){const cx=sx+dx*(a+b)/2,cy=sy+dy*(a+b)/2,th=20;
+        exits.push(dx?{x:cx-gap/2,y:cy-th/2,w:gap,h:th,room:id}:{x:cx-th/2,y:cy-gap/2,w:th,h:gap,room:id});}}
+    if(L-t>0.5)walls.push({x1:sx+dx*t,y1:sy+dy*t,x2:sx+dx*L,y2:sy+dy*L,room:id});}
+  return{id,walls,exits,notes};}
+function roomMembers(id){return[...state.walls.filter(o=>o.room===id),...state.exits.filter(o=>o.room===id)];}
+function roomBox(id){let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const o of roomMembers(id)){const xs=o.x1!==undefined?[o.x1,o.x2]:[o.x,o.x+o.w],ys=o.x1!==undefined?[o.y1,o.y2]:[o.y,o.y+o.h];a=Math.min(a,...xs);c=Math.max(c,...xs);b=Math.min(b,...ys);d=Math.max(d,...ys);}return{x:a,y:b,w:c-a,h:d-b};}
+// delete one object; if it belongs to a room, delete the whole room. Particles aimed at a deleted exit go back to "nearest".
+function removeObject(o){
+  const gone=new Set(o&&o.room?roomMembers(o.room):[o]);
+  for(const arr of [state.walls,state.exits,state.safes,state.starts,state.particles])for(let i=arr.length-1;i>=0;i--)if(gone.has(arr[i]))arr.splice(i,1);
+  for(const p of state.particles)if(p.targetObj&&gone.has(p.targetObj))p.targetObj=null;
+  if(gone.has(state.selected))state.selected=null;return gone.size;}
+function objectAt(px,py){const p={x:px,y:py};
+  for(let i=state.particles.length-1;i>=0;i--){if(dist(state.particles[i].pos,p)<=state.particles[i].radius+5)return state.particles[i];}
+  for(const arr of [state.safes,state.exits,state.walls,state.starts])for(let i=arr.length-1;i>=0;i--){
+    const o=arr[i];if(o.w&&o.h){if(rectContains(o,p))return o;}else{if(segDistToPoint(o.x1,o.y1,o.x2,o.y2,px,py)<=8)return o;}}
+  return null;}
+function handleAt(o,px,py,tol=8){
+  if(!o)return null;
+  if(o.w&&o.h){const corners={nw:[o.x,o.y],ne:[o.x+o.w,o.y],sw:[o.x,o.y+o.h],se:[o.x+o.w,o.y+o.h]};
+    for(const k in corners){const c=corners[k];if(Math.hypot(px-c[0],py-c[1])<=tol)return k;}
+    if(Math.abs(px-o.x)<=tol&&py>=o.y-tol&&py<=o.y+o.h+tol)return'w';if(Math.abs(px-(o.x+o.w))<=tol&&py>=o.y-tol&&py<=o.y+o.h+tol)return'e';
+    if(Math.abs(py-o.y)<=tol&&px>=o.x-tol&&px<=o.x+o.w+tol)return'n';if(Math.abs(py-(o.y+o.h))<=tol&&px>=o.x-tol&&px<=o.x+o.w+tol)return's';
+    return null;}
+  // segment wall: grab either endpoint
+  if(Math.hypot(px-o.x1,py-o.y1)<=tol)return'p1';if(Math.hypot(px-o.x2,py-o.y2)<=tol)return'p2';
+  return null;}
+function updateSelectionPanel(){
+  const o=state.selected;document.getElementById('selKind').textContent=o?(o instanceof Particle?'Particle (person)':o.room?'Part of a room':state.walls.includes(o)?'Wall':state.exits.includes(o)?'Exit '+exitName(state.exits.indexOf(o)):state.safes.includes(o)?'Safe zone':state.starts.includes(o)?'Start zone':'Object'):'-';
+  const sx=document.getElementById('selX'),sy=document.getElementById('selY'),sw=document.getElementById('selW'),sh=document.getElementById('selH');
+  const disabled=!(o&&(o.w!==undefined||o.radius!==undefined));
+  [sx,sy,sw,sh].forEach(el=>el.disabled=disabled);
+  if(!o){applyVisibility();return;}
+  applyVisibility();sx.value=o.x!==undefined?Math.round(o.x):'';sy.value=o.y!==undefined?Math.round(o.y):'';sw.value=o.w!==undefined?Math.round(o.w):'';sh.value=o.h!==undefined?Math.round(o.h):'';}
+
+function applySelTransform(){
+  const o=state.selected;if(!o)return;histPush();const X=+document.getElementById('selX').value||0,Y=+document.getElementById('selY').value||0;
+  if(o instanceof Particle){o.pos.x=X;o.pos.y=Y;o.pbest={x:X,y:Y};}
+  else if(o.x1!==undefined){const ddx=X-o.x1,ddy=Y-o.y1;o.x1=X;o.y1=Y;o.x2+=ddx;o.y2+=ddy;}
+  else{o.x=X;o.y=Y;}redraw();}
+function applySelSize(){
+  const o=state.selected;if(!o||o.w===undefined)return;histPush();o.w=Math.max(MIN_RECT,+document.getElementById('selW').value||MIN_RECT);o.h=Math.max(MIN_RECT,+document.getElementById('selH').value||MIN_RECT);redraw();}
+function deleteSelected(){
+  const o=state.selected;if(!o)return;histPush();const room=!!o.room;removeObject(o);if(room)setStatus('Room deleted.');
+  updateSelectionPanel();document.getElementById('statParticles').textContent=state.particles.length;redraw();}
+function applyVisibility(){const m=state.mode;if(typeof document.querySelectorAll!=='function')return;if(typeof setCanvasCursor==='function')setCanvasCursor();
+  document.querySelectorAll('[data-show]').forEach(el=>{let v=el.dataset.show.split(' ').includes(m);
+    if(v&&el.dataset.tool)v=state.tool===el.dataset.tool;if(v&&el.dataset.needsel)v=!!state.selected;el.hidden=!v;});}
+function setStatus(m){document.getElementById('status').textContent=m;}
+function refreshTools(){
+  for(const id of ['toolSelect','toolWall','toolExit','toolSafe','toolStart','toolRoom','toolParticle']){document.getElementById(id).classList.toggle('active',id==='tool'+state.tool[0].toUpperCase()+state.tool.slice(1));}
+  document.getElementById('toolLabel').textContent=state.mode==='edit'?'Tool: '+state.tool:'';applyVisibility();}
+function setMode(m){
+  if(state.mode==='sim'&&m!=='sim'&&state.particles.some(p=>p.home))resetSim();
+  state.mode=m;document.getElementById('modeEdit').classList.toggle('active',m==='edit');document.getElementById('modeSim').classList.toggle('active',m==='sim');
+  if(m==='sim'){if(!state.particles.length)setStatus('No particles yet. Add particles in Edit mode.');else setStatus('Sim mode — press Run.');}else if(m==='edit')setStatus('Edit mode.');
+  if(typeof studyOnMode==='function')studyOnMode(m);refreshTools();redraw();}
+function setTool(t){state.tool=t;state.selected=null;state.drag=null;updateSelectionPanel();refreshTools();
+  const cursors={room:'crosshair',select:'default',wall:'crosshair',exit:'crosshair',safe:'crosshair',start:'crosshair',particle:'copy'};
+  if(typeof setCanvasCursor==='function')setCanvasCursor();else document.getElementById('canvas').style.cursor=cursors[t]||'crosshair';redraw();}
+function numOr(id,def,min=-Infinity){const el=document.getElementById(id),v=parseFloat(el&&el.value);return isNaN(v)?def:Math.max(min,v);}
+function applyPso(){
+  state.pso.w=numOr('psoW',0.7,0);state.pso.c1=numOr('psoC1',1.4,0);state.pso.c2=numOr('psoC2',1.4,0);
+  state.pso.maxV=numOr('psoMaxV',10,0.5);}
+function applyBoids(){
+  state.boids.on=document.getElementById('boidsOn').checked;state.boids.sep=numOr('boidSep',1.6,0);
+  state.boids.ali=numOr('boidAli',0.6,0);state.boids.coh=numOr('boidCoh',0.8,0);
+  state.boids.radius=numOr('boidRadius',70,1);state.wallRepel=numOr('wallRepel',2.2,0);state.wallAvoid=state.wallRepel>0;}   // wall repel 0 = no wall avoidance
+
+function saveMap(){
+  const data={walls:state.walls,exits:state.exits,safes:state.safes,starts:state.starts,particles:state.particles.map(p=>({x:(p.home||p.pos).x,y:(p.home||p.pos).y}))};
+  const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mosi_map.json';a.click();URL.revokeObjectURL(url);setStatus('Map saved.');}
+function loadMap(){
+  const input=document.createElement('input');input.type='file';input.accept='.json';input.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{
+    try{const d=JSON.parse(ev.target.result);histPush();state.walls=d.walls||[];state.exits=d.exits||[];state.safes=d.safes||[];state.starts=d.starts||[];state.particles=[];
+      (d.particles||[]).forEach(pp=>state.particles.push(new Particle(pp.x,pp.y)));   // older files may hold per-dot targets; they are ignored
+      state.selected=null;state.iter=0;document.getElementById('statParticles').textContent=state.particles.length;document.getElementById('statIter').textContent='0';setStatus('Map loaded.');redraw();}
+    catch(err){setStatus('Load failed.');}};r.readAsText(f);};input.click();}
+function clearMap(){histPush();state.walls=[];state.exits=[];state.safes=[];state.starts=[];state.particles=[];state.selected=null;state.iter=0;
+  document.getElementById('statParticles').textContent='0';document.getElementById('statIter').textContent='0';document.getElementById('statEvac').textContent='0';setStatus('Map cleared.');redraw();}
+function redraw(){
+  if(state.mode==='study'){studyRedraw();return;}
+  const c=document.getElementById('canvas'),cx=c.getContext('2d');beginFrame(cx);
+  cx.strokeStyle='#eef2f7';cx.lineWidth=1;cx.beginPath();
+  for(let x=40;x<CANVAS_W;x+=40){cx.moveTo(x,0);cx.lineTo(x,CANVAS_H);}
+  for(let y=40;y<CANVAS_H;y+=40){cx.moveTo(0,y);cx.lineTo(CANVAS_W,y);}cx.stroke();
+  cx.fillStyle='#b4bcc5';cx.strokeStyle='#64748b';cx.lineWidth=2.5;
+  for(const w of state.walls){if(w.w&&w.h){cx.fillRect(w.x,w.y,w.w,w.h);cx.strokeRect(w.x,w.y,w.w,w.h);}else{cx.beginPath();cx.moveTo(w.x1,w.y1);cx.lineTo(w.x2,w.y2);cx.stroke();}}
+  if(state.showBoids&&boidsVis.length){for(const v of boidsVis){cx.strokeStyle='rgba(59,130,246,0.3)';cx.lineWidth=1;cx.beginPath();for(const q of v.links){cx.moveTo(v.pos.x,v.pos.y);cx.lineTo(q.x,q.y);}cx.stroke();
+    if(v.steer&&(v.steer.x||v.steer.y)){cx.strokeStyle='rgba(217,70,239,0.85)';cx.lineWidth=2;cx.beginPath();cx.moveTo(v.pos.x,v.pos.y);cx.lineTo(v.pos.x+v.steer.x*3,v.pos.y+v.steer.y*3);cx.stroke();cx.lineWidth=1;}}}
+  stDrawSafes(cx);
+  cx.lineWidth=2;state.exits.forEach((e,k)=>{cx.fillStyle='#34d399';cx.strokeStyle='#059669';cx.fillRect(e.x,e.y,e.w,e.h);cx.strokeRect(e.x,e.y,e.w,e.h);
+    cx.fillStyle='#065f46';cx.font='bold 12px sans-serif';cx.textAlign='left';cx.fillText(exitName(k),e.x+e.w+4,e.y+13);});
+  stDrawDecor(cx);
+  if(state.showGbest){const gb=groupBests();cx.fillStyle='#fde047';
+    for(const k in gb){const p=gb[k];cx.beginPath();cx.arc(p.x,p.y,5,0,Math.PI*2);cx.fill();cx.strokeStyle='#b45309';cx.stroke();cx.fillStyle='#fde047';cx.fillText('g*',p.x-6,p.y-9);}}
+  for(const p of state.particles){
+    cx.globalAlpha=p.wait>0?0.4:1;cx.fillStyle=p.evacuated?'#86efac':'#22c55e';cx.beginPath();cx.arc(p.pos.x,p.pos.y,dotR(p.radius),0,Math.PI*2);cx.fill();cx.globalAlpha=1;
+    cx.strokeStyle='#14532d';cx.lineWidth=1.5;cx.stroke();
+    if(state.selected===p){cx.strokeStyle='#fde047';cx.lineWidth=3;cx.beginPath();cx.arc(p.pos.x,p.pos.y,dotR(p.radius+6),0,Math.PI*2);cx.stroke();cx.strokeStyle='#14532d';cx.lineWidth=1.5;}
+    if(state.showVel&&!p.evacuated){cx.strokeStyle='#ef4444';cx.lineWidth=2;cx.beginPath();cx.moveTo(p.pos.x,p.pos.y);cx.lineTo(p.pos.x+p.vel.x*3,p.pos.y+p.vel.y*3);cx.stroke();}
+    if(state.showPbest&&!p.evacuated){cx.fillStyle='#059669';cx.fillRect(p.pbest.x-2,p.pbest.y-2,4,4);}
+  }
+  const o=state.selected;if(state.mode==='edit'&&o&&!(o instanceof Particle)){
+    if(o.room){const b=roomBox(o.room);cx.save();cx.setLineDash([6,4]);cx.strokeStyle='#3b82f6';cx.lineWidth=1.5;cx.strokeRect(b.x-6,b.y-6,b.w+12,b.h+12);cx.restore();}
+    if(o.x1!==undefined){ // segment wall selection
+      cx.strokeStyle='#3b82f6';cx.lineWidth=3;cx.beginPath();cx.moveTo(o.x1,o.y1);cx.lineTo(o.x2,o.y2);cx.stroke();
+      cx.fillStyle='#fde047';cx.strokeStyle='#b45309';cx.lineWidth=2;
+      for(const p of [[o.x1,o.y1],[o.x2,o.y2]]){cx.beginPath();cx.arc(p[0],p[1],7,0,Math.PI*2);cx.fill();cx.stroke();}
+      cx.lineWidth=1.5;
+    }else{
+    cx.strokeStyle='#3b82f6';cx.lineWidth=2;cx.strokeRect(o.x,o.y,o.w,o.h);
+    const pts={nw:[o.x,o.y],ne:[o.x+o.w,o.y],sw:[o.x,o.y+o.h],se:[o.x+o.w,o.y+o.h],n:[o.x+o.w/2,o.y],s:[o.x+o.w/2,o.y+o.h],w:[o.x,o.y+o.h/2],e:[o.x+o.w,o.y+o.h/2]};
+    cx.fillStyle='#fde047';cx.strokeStyle='#b45309';
+    for(const k in pts){const q=pts[k];cx.fillRect(q[0]-HANDLE/2,q[1]-HANDLE/2,HANDLE,HANDLE);cx.strokeRect(q[0]-HANDLE/2,q[1]-HANDLE/2,HANDLE,HANDLE);}
+    }
+  }
+  if(state.mode==='edit'&&state.drag&&state.drag.obj){drawSnapVis(cx);const so=state.drag.obj;
+    if(so.x1!==undefined)drawSizeLabel(cx,fmtM(Math.hypot(so.x2-so.x1,so.y2-so.y1)),(so.x1+so.x2)/2+10,(so.y1+so.y2)/2-8);
+    else if(so.w!==undefined&&!so.room)drawSizeLabel(cx,state.exits.includes(so)?'door '+fmtM(Math.max(so.w,so.h)):fmtM(so.w)+' x '+fmtM(so.h),so.x,so.y-8);}
+  if(!state.walls.length&&!state.exits.length&&!state.safes.length&&!state.particles.length)hud(cx,()=>{cx.fillStyle='#94a3b8';cx.textAlign='center';cx.font='14px sans-serif';cx.fillText('Empty map: pick a tool in the top bar, or load Demo / College on the left.',CANVAS_W/2,CANVAS_H/2);cx.textAlign='start';});
+  if(state.mode==='sim')hud(cx,()=>{cx.fillStyle='#334155';cx.font='12px sans-serif';cx.textAlign='left';const txt=`t = ${(state.iter*simStepSec()).toFixed(1)} s`;cx.font='bold 13px sans-serif';cx.fillStyle='rgba(255,255,255,0.85)';cx.fillRect(6,8,((cx.measureText(txt)||{}).width||300)+12,22);cx.fillStyle='#0f172a';cx.fillText(txt,12,24);});
+}
+
+/* ===================== SNAPPING ("locking" onto walls, corners, edges, grid) ===================== */
+/* ===================== ZOOM AND PAN (view only; the model is unchanged) =====================
+   world (map) point (wx,wy) is drawn at canvas pixel ((wx-VIEW.x)*z, (wy-VIEW.y)*z) */
+const VIEW={z:1,x:0,y:0,min:1,max:8};
+function clampView(){const z=VIEW.z;VIEW.x=clamp(VIEW.x,0,CANVAS_W-CANVAS_W/z);VIEW.y=clamp(VIEW.y,0,CANVAS_H-CANVAS_H/z);}
+function dotR(r){return r/Math.sqrt(VIEW.z);}
+function installViewScaling(cx){if(cx.__vs||typeof CanvasRenderingContext2D==='undefined'||!(cx instanceof CanvasRenderingContext2D))return;cx.__vs=true;
+  const P=CanvasRenderingContext2D.prototype,fd=Object.getOwnPropertyDescriptor(P,'font'),ld=Object.getOwnPropertyDescriptor(P,'lineWidth');
+  Object.defineProperty(cx,'font',{configurable:true,get(){return fd.get.call(this);},set(v){const z=VIEW.hud?1:Math.sqrt(VIEW.z);fd.set.call(this,z===1?v:String(v).replace(/(\d+(?:\.\d+)?)px/,(m,n)=>(n/z).toFixed(3)+'px'));}});
+  Object.defineProperty(cx,'lineWidth',{configurable:true,get(){return ld.get.call(this);},set(v){ld.set.call(this,VIEW.hud?v:v/Math.sqrt(VIEW.z));}});}
+function beginFrame(cx){installViewScaling(cx);cx.setTransform(1,0,0,1,0,0);cx.clearRect(0,0,CANVAS_W,CANVAS_H);cx.setTransform(VIEW.z,0,0,VIEW.z,-VIEW.x*VIEW.z,-VIEW.y*VIEW.z);}
+// draw something fixed on the screen (not zoomed), then return to the map view
+function hud(cx,fn){cx.save();cx.setTransform(1,0,0,1,0,0);VIEW.hud=true;try{fn();}finally{VIEW.hud=false;cx.restore();}}
+function zoomAt(px,py,f){const z0=VIEW.z,z1=clamp(z0*f,VIEW.min,VIEW.max);if(Math.abs(z1-z0)<1e-9)return;
+  const wx=px/z0+VIEW.x,wy=py/z0+VIEW.y;VIEW.z=z1;VIEW.x=wx-px/z1;VIEW.y=wy-py/z1;clampView();zoomLabel();redraw();}
+function zoomFit(){VIEW.z=1;VIEW.x=0;VIEW.y=0;zoomLabel();redraw();}
+function zoomLabel(){const l=document.getElementById('zoomLbl');if(l)l.textContent=Math.round(VIEW.z*100)+'%';}
+const SNAP={tol:10,grid:10,vis:null};
+function snapOn(e){const c=document.getElementById('snapObj');return !(e&&e.altKey)&&(!c||c.checked);}
+function gridOn(e){const c=document.getElementById('snapGrid');return !(e&&e.altKey)&&!!(c&&c.checked);}
+function pxPerM(){const el=document.getElementById('stScale');return (el&&+el.value)||20;}
+function fmtM(px){return (px/pxPerM()).toFixed(1)+' m';}
+// everything that can be snapped to (except the objects being moved)
+function snapTargets(ex){
+  const pts=[],xs=[],ys=[],segs=[];
+  for(const w of state.walls){if(ex&&ex.has(w))continue;
+    if(w.x1!==undefined){pts.push({x:w.x1,y:w.y1},{x:w.x2,y:w.y2});xs.push(w.x1,w.x2);ys.push(w.y1,w.y2);segs.push(w);}
+    else{pts.push({x:w.x,y:w.y},{x:w.x+w.w,y:w.y},{x:w.x,y:w.y+w.h},{x:w.x+w.w,y:w.y+w.h});xs.push(w.x,w.x+w.w);ys.push(w.y,w.y+w.h);}}
+  for(const arr of [state.exits,state.safes,state.starts])for(const r of arr){if(ex&&ex.has(r))continue;
+    pts.push({x:r.x,y:r.y},{x:r.x+r.w,y:r.y},{x:r.x,y:r.y+r.h},{x:r.x+r.w,y:r.y+r.h});xs.push(r.x,r.x+r.w);ys.push(r.y,r.y+r.h);}
+  return{pts,xs,ys,segs};}
+function nearestIn(v,list,tol){let b=null,bd=tol;for(const c of list){const d=Math.abs(c-v);if(d<=bd){bd=d;b=c;}}return b;}
+// snap one point. lockX/lockY: that coordinate must not change (Shift axis lock)
+function snapPoint(p,e,ex,lockX,lockY){
+  const out={x:p.x,y:p.y};SNAP.vis={pts:[],vx:[],hy:[]};if(!snapOn(e)&&!gridOn(e))return out;
+  const T=snapTargets(ex),tol=SNAP.tol/VIEW.z;
+  if(snapOn(e)){
+    if(!lockX&&!lockY){let b=null,bd=tol;for(const q of T.pts){const d=Math.hypot(q.x-p.x,q.y-p.y);if(d<=bd){bd=d;b=q;}}
+      if(b){SNAP.vis.pts.push(b);return{x:b.x,y:b.y};}
+      let bs=null,bsd=tol,bq=null;for(const w of T.segs){const q=segClosest(w,p),d=Math.hypot(q.x-p.x,q.y-p.y);if(d<bsd){bsd=d;bs=w;bq=q;}}
+      if(bq){SNAP.vis.pts.push(bq);return{x:bq.x,y:bq.y};}}
+    if(!lockX){const x=nearestIn(p.x,T.xs,tol);if(x!==null){out.x=x;SNAP.vis.vx.push(x);}}
+    if(!lockY){const y=nearestIn(p.y,T.ys,tol);if(y!==null){out.y=y;SNAP.vis.hy.push(y);}}}
+  if(gridOn(e)){const g=SNAP.grid;if(!lockX&&!SNAP.vis.vx.length)out.x=Math.round(out.x/g)*g;if(!lockY&&!SNAP.vis.hy.length)out.y=Math.round(out.y/g)*g;}
+  return out;}
+// snap a moved box (its edges) by shifting the move vector
+function snapDelta(B,T0,e,ex){
+  const T={x:T0.x,y:T0.y};SNAP.vis={pts:[],vx:[],hy:[]};if(!snapOn(e)&&!gridOn(e))return T;
+  const S=snapTargets(ex),tol=SNAP.tol/VIEW.z;let gx=true,gy=true;
+  if(snapOn(e)){let best=null,bd=tol+1;for(const edge of [B.x,B.x+B.w])for(const c of S.xs){const d=Math.abs(edge+T0.x-c);if(d<bd){bd=d;best=[c,c-edge];}}
+    if(best){T.x=best[1];SNAP.vis.vx.push(best[0]);gx=false;}
+    best=null;bd=tol+1;for(const edge of [B.y,B.y+B.h])for(const c of S.ys){const d=Math.abs(edge+T0.y-c);if(d<bd){bd=d;best=[c,c-edge];}}
+    if(best){T.y=best[1];SNAP.vis.hy.push(best[0]);gy=false;}}
+  if(gridOn(e)){const g=SNAP.grid;if(gx)T.x=Math.round((B.x+T0.x)/g)*g-B.x;if(gy)T.y=Math.round((B.y+T0.y)/g)*g-B.y;}
+  return T;}
+function drawSnapVis(cx){const v=SNAP.vis;if(!v)return;cx.save();cx.strokeStyle='#f97316';cx.lineWidth=1;cx.setLineDash([5,4]);
+  for(const x of v.vx){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,CANVAS_H);cx.stroke();}for(const y of v.hy){cx.beginPath();cx.moveTo(0,y);cx.lineTo(CANVAS_W,y);cx.stroke();}
+  cx.setLineDash([]);cx.lineWidth=2;for(const q of v.pts){cx.beginPath();cx.arc(q.x,q.y,6,0,Math.PI*2);cx.stroke();}cx.restore();}
+function drawSizeLabel(cx,text,x,y){const X=(x-VIEW.x)*VIEW.z,Y=(y-VIEW.y)*VIEW.z;hud(cx,()=>{cx.font='bold 12px sans-serif';const w=cx.measureText(text).width+10;cx.fillStyle='rgba(15,23,42,0.85)';cx.fillRect(X,Y-15,w,19);cx.fillStyle='#fff';cx.textAlign='left';cx.fillText(text,X+5,Y-1);});}
+// an exit drawn across a wall line is centred on that wall (doors sit in walls)
+function lockExitToWall(r){
+  for(const w of state.walls){if(w.x1===undefined)continue;
+    if(Math.abs(w.y1-w.y2)<0.5&&w.y1>=r.y-4&&w.y1<=r.y+r.h+4&&Math.max(w.x1,w.x2)>r.x&&Math.min(w.x1,w.x2)<r.x+r.w){const th=Math.min(r.h,20);r.y=w.y1-th/2;r.h=th;if(r.w<=r.h)r.w=r.h+4;return 'h';}
+    if(Math.abs(w.x1-w.x2)<0.5&&w.x1>=r.x-4&&w.x1<=r.x+r.w+4&&Math.max(w.y1,w.y2)>r.y&&Math.min(w.y1,w.y2)<r.y+r.h){const th=Math.min(r.w,20);r.x=w.x1-th/2;r.w=th;if(r.h<=r.w)r.h=r.w+4;return 'v';}}
+  return null;}
+
+/* ===================== Particle tool: several dots per click ===================== */
+function dropOpts(){const n=document.getElementById('dropN'),r=document.getElementById('dropR');return{n:clamp(Math.round(+(n&&n.value)||1),1,500),spread:Math.max(0.2,+(r&&r.value)||2)};}
+// place up to n dots around the click, inside the same room (no wall between the click and a dot), not on walls or exits
+function dropDots(c,n,spreadPx){
+  const placed=[],ok=q=>q.x>=RADIUS&&q.y>=RADIUS&&q.x<=CANVAS_W-RADIUS&&q.y<=CANVAS_H-RADIUS&&!inExitRect(q.x,q.y,RADIUS)&&
+    state.walls.every(w=>((w.w&&w.h)?rectDist(w,q):segDistToPoint(w.x1,w.y1,w.x2,w.y2,q.x,q.y))>=RADIUS+2)&&!moveCrossesWall(c,q);
+  for(const gap of [RADIUS*1.6,RADIUS*0.9]){let tries=0;
+    if(!placed.length&&ok(c)){placed.push({x:c.x,y:c.y});}
+    while(placed.length<n&&tries<n*80){tries++;const a=Math.random()*Math.PI*2,rr=spreadPx*Math.sqrt(Math.random()),q={x:c.x+Math.cos(a)*rr,y:c.y+Math.sin(a)*rr};
+      if(ok(q)&&placed.every(o=>Math.hypot(o.x-q.x,o.y-q.y)>=gap))placed.push(q);}
+    if(placed.length>=n)break;}
+  return placed;}
+
+const canvas=document.getElementById('canvas');
+function canvasPx(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*CANVAS_W/r.width,y:(e.clientY-r.top)*CANVAS_H/r.height};}
+function canvasPt(e){const q=canvasPx(e);return{x:q.x/VIEW.z+VIEW.x,y:q.y/VIEW.z+VIEW.y};}
+/* zoom with the wheel (towards the cursor); pan by dragging in Simulate/Study, or Space+drag / middle button in Edit */
+const PAN={on:false,space:false};
+function canPan(e){return e.button===1||(e.button===0&&(state.mode!=='edit'||PAN.space));}
+canvas.addEventListener('wheel',e=>{e.preventDefault();const q=canvasPx(e);zoomAt(q.x,q.y,Math.exp(-e.deltaY*0.0015));},{passive:false});
+canvas.addEventListener('mousedown',e=>{if(!canPan(e))return;e.preventDefault();e.stopImmediatePropagation();
+  const q=canvasPx(e);Object.assign(PAN,{on:true,sx:q.x,sy:q.y,vx:VIEW.x,vy:VIEW.y});canvas.style.cursor='grabbing';});
+window.addEventListener('mousemove',e=>{if(!PAN.on)return;const q=canvasPx(e);VIEW.x=PAN.vx-(q.x-PAN.sx)/VIEW.z;VIEW.y=PAN.vy-(q.y-PAN.sy)/VIEW.z;clampView();redraw();});
+window.addEventListener('mouseup',()=>{if(!PAN.on)return;PAN.on=false;setCanvasCursor();});
+function setCanvasCursor(){const cursors={select:'default',wall:'crosshair',exit:'crosshair',safe:'crosshair',start:'crosshair',room:'crosshair',particle:'copy'};
+  canvas.style.cursor=state.mode!=='edit'||PAN.space?'grab':(cursors[state.tool]||'crosshair');}
+window.addEventListener('keydown',e=>{const tag=(e.target&&e.target.tagName)||'';if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA'||e.ctrlKey||e.metaKey)return;
+  if(e.key===' '&&state.mode==='edit'){e.preventDefault();if(!PAN.space){PAN.space=true;setCanvasCursor();}}
+  else if(e.key==='+'||e.key==='='){zoomAt(CANVAS_W/2,CANVAS_H/2,1.25);}
+  else if(e.key==='-'||e.key==='_'){zoomAt(CANVAS_W/2,CANVAS_H/2,0.8);}
+  else if(e.key==='0'){zoomFit();}});
+window.addEventListener('keyup',e=>{if(e.key===' '&&PAN.space){PAN.space=false;setCanvasCursor();}});
+document.getElementById('zoomIn').addEventListener('click',()=>zoomAt(CANVAS_W/2,CANVAS_H/2,1.25));
+document.getElementById('zoomOut').addEventListener('click',()=>zoomAt(CANVAS_W/2,CANVAS_H/2,0.8));
+document.getElementById('zoomFit').addEventListener('click',zoomFit);
+function simPlanHint(){const h=document.getElementById('simPlanHint'),sel=document.getElementById('simPlan');if(!h||!sel)return;
+  const pen=simPsoPen(),o=sel.querySelector('option[value="pso"]');if(o)o.disabled=!pen;if(sel.value==='pso'&&!pen)sel.value='route';
+  {const w=document.getElementById('simExpWho');if(w)w.innerHTML=state.particles.length?`People: your <b>${state.particles.length}</b> placed dots.`:`People: <b>${Math.round(numOr('stN',200,1))}</b> (Study's Evacuees), placed in the Start zones.`;}
+  h.textContent=pen?'PSO penalties from the last study: '+state.exits.map((e,k)=>exitName(k)+' '+pen[k].toFixed(0)+' m').join(', ')+'.':'Run the study (Study mode) to unlock the PSO plan.';}
+document.getElementById('simPlan').addEventListener('change',()=>{resetSim();simPlanHint();});
+document.getElementById('simDelay').addEventListener('change',()=>resetSim());
+['psoW','psoC1','psoC2','psoMaxV'].forEach(id=>document.getElementById(id).addEventListener('input',applyPso));
+['boidSep','boidAli','boidCoh','boidRadius','wallRepel'].forEach(id=>document.getElementById(id).addEventListener('input',applyBoids));
+document.getElementById('simExpBtn').addEventListener('click',async()=>{const btn=document.getElementById('simExpBtn'),out=document.getElementById('simExpOut'),bar=document.getElementById('simExpBar');
+  if(btn.disabled)return;btn.disabled=true;resetSim();bar.hidden=false;bar.value=0;out.textContent='Running...';
+  try{const X=await simExperiment(Math.max(1,Math.round(numOr('stN',200,1))),Math.max(2,+document.getElementById('simExpR').value||10),(i,R)=>{bar.value=i/R;out.textContent=`Run ${i} of ${R}...`;});
+    out.innerHTML=simExperimentHtml(X);setStatus('Crowding experiment done.');}
+  catch(err){out.textContent=err.message;setStatus(err.message);}
+  bar.hidden=true;btn.disabled=false;redraw();});
+canvas.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault();});
+canvas.addEventListener('mousedown',e=>{if(state.mode!=='edit')return;const pt=canvasPt(e);
+  if(e.button===2){const o=objectAt(pt.x,pt.y);if(o){histPush();const room=!!o.room;removeObject(o);updateSelectionPanel();document.getElementById('statParticles').textContent=state.particles.length;setStatus(room?'Room deleted.':'Deleted.');redraw();}return;}
+  const o=objectAt(pt.x,pt.y);
+  if(state.tool==='select'){const h=handleAt(o,pt.x,pt.y);state.selected=o;
+    const orig=o?(o instanceof Particle?{pos:{...o.pos}}:o.room&&!(h&&h!=='move')?{members:roomMembers(o.room).map(m=>({...m}))}:{...o}):null;
+    state.drag=o?{obj:o,start:{x:pt.x,y:pt.y},p0:{x:pt.x,y:pt.y},orig,handle:(o.w!==undefined?(h||(rectContains(o,pt)?'move':null)):(h||'move')),snap:histSnap()}:null;updateSelectionPanel();setStatus(o?(o.room?'Selected a room: drag to move the whole room, Delete removes it.':`Selected ${o.constructor.name.toLowerCase()}`):'Nothing selected');redraw();return;}
+  if(state.tool==='wall'){const a=snapPoint(pt,e);state.drag={kind:'wall',start:a,cur:a};setStatus('Drag to draw a wall. Shift = straight; ends lock onto walls and corners (hold Alt to place freely).');return;}
+  if(state.tool==='room'){state.drag={kind:'room',start:snapPoint(pt,e)};setStatus('Drag to draw a room.');return;}
+  if(state.tool==='exit'||state.tool==='safe'||state.tool==='start'){state.drag={kind:state.tool,start:snapPoint(pt,e)};setStatus(`Drawing ${state.tool}...`);return;}
+  if(state.tool==='particle'){const o2=dropOpts(),pts=dropDots(pt,o2.n,o2.spread*pxPerM());
+    if(!pts.length){setStatus('No room for a dot there (too close to a wall or an exit).');return;}
+    histPush();for(const q of pts)state.particles.push(new Particle(q.x,q.y));state.selected=null;updateSelectionPanel();document.getElementById('statParticles').textContent=state.particles.length;
+    setStatus(pts.length===o2.n?`Placed ${pts.length} dot${pts.length>1?'s':''}.`:`Placed ${pts.length} of ${o2.n} dots: no more fit there. Increase the spread or click in a bigger space.`);redraw();return;}
+});
+canvas.addEventListener('mousemove',e=>{if(state.mode!=='edit'||!state.drag)return;const pt=canvasPt(e),d=state.drag;
+  if(d.kind==='wall'){let raw={x:pt.x,y:pt.y},lx=false,ly=false;
+    {const dx=Math.abs(pt.x-d.start.x),dy=Math.abs(pt.y-d.start.y),near=snapOn(e)&&Math.min(dx,dy)<=Math.tan(4*Math.PI/180)*Math.max(dx,dy);
+     // Shift, or a wall within 4 degrees of horizontal/vertical, is made perfectly straight
+     if(e.shiftKey||near){if(dx>dy){raw.y=d.start.y;ly=true;}else{raw.x=d.start.x;lx=true;}}}
+    d.cur=snapPoint(raw,e,null,lx,ly);cxPreviewLine(d.start,d.cur);return;}
+  if(d.kind==='room'){const q=snapPoint(pt,e),rx=Math.min(d.start.x,q.x),ry=Math.min(d.start.y,q.y),w=Math.abs(q.x-d.start.x),h=Math.abs(q.y-d.start.y);d.cur=q;cxPreviewRoom(rx,ry,w,h);return;}
+  if(d.kind==='exit'||d.kind==='safe'||d.kind==='start'){const q=snapPoint(pt,e),w=Math.abs(q.x-d.start.x),h=Math.abs(q.y-d.start.y);const rx=Math.min(d.start.x,q.x),ry=Math.min(d.start.y,q.y);d.cur=q;
+    cxPreview(rx,ry,Math.max(MIN_RECT,w),Math.max(MIN_RECT,h),d.kind);return;}
+  const obj=d.obj;if(!obj)return;const O=d.orig,T={x:pt.x-d.p0.x,y:pt.y-d.p0.y};
+  if(obj instanceof Particle){obj.pos.x=O.pos.x+T.x;obj.pos.y=O.pos.y+T.y;obj.pbest={x:obj.pos.x,y:obj.pos.y};updateSelectionPanel();redraw();return;}
+  if(obj.room&&d.handle==='move'){const mem=roomMembers(obj.room),ex=new Set(mem);let a=Infinity,b=Infinity,c2=-Infinity,d2=-Infinity;
+    for(const m of O.members){const xs=m.x1!==undefined?[m.x1,m.x2]:[m.x,m.x+m.w],ys=m.x1!==undefined?[m.y1,m.y2]:[m.y,m.y+m.h];a=Math.min(a,...xs);c2=Math.max(c2,...xs);b=Math.min(b,...ys);d2=Math.max(d2,...ys);}
+    const D=snapDelta({x:a,y:b,w:c2-a,h:d2-b},T,e,ex);
+    mem.forEach((m,k)=>{const q=O.members[k];if(m.x1!==undefined){m.x1=q.x1+D.x;m.y1=q.y1+D.y;m.x2=q.x2+D.x;m.y2=q.y2+D.y;}else{m.x=q.x+D.x;m.y=q.y+D.y;}});updateSelectionPanel();redraw();return;}
+  if(obj.x1!==undefined){ // segment wall
+    const ex=new Set([obj]);
+    if(d.handle==='p1'){const q=snapPoint({x:O.x1+T.x,y:O.y1+T.y},e,ex);obj.x1=q.x;obj.y1=q.y;}
+    else if(d.handle==='p2'){const q=snapPoint({x:O.x2+T.x,y:O.y2+T.y},e,ex);obj.x2=q.x;obj.y2=q.y;}
+    else{const D=snapDelta({x:Math.min(O.x1,O.x2),y:Math.min(O.y1,O.y2),w:Math.abs(O.x2-O.x1),h:Math.abs(O.y2-O.y1)},T,e,ex);obj.x1=O.x1+D.x;obj.y1=O.y1+D.y;obj.x2=O.x2+D.x;obj.y2=O.y2+D.y;}
+    updateSelectionPanel();redraw();return;}
+  const ex=new Set([obj]);
+  if(d.handle==='move'){const D=snapDelta(O,T,e,ex);obj.x=O.x+D.x;obj.y=O.y+D.y;}
+  else if(obj.w!==undefined){const h=d.handle;let L=O.x,R=O.x+O.w,Tp=O.y,Bt=O.y+O.h;
+    if(h.includes('w'))L=snapPoint({x:O.x+T.x,y:pt.y},e,ex,false,true).x;if(h.includes('e'))R=snapPoint({x:O.x+O.w+T.x,y:pt.y},e,ex,false,true).x;
+    const vx=SNAP.vis&&SNAP.vis.vx.slice();
+    if(h.includes('n'))Tp=snapPoint({x:pt.x,y:O.y+T.y},e,ex,true,false).y;if(h.includes('s'))Bt=snapPoint({x:pt.x,y:O.y+O.h+T.y},e,ex,true,false).y;
+    if(SNAP.vis&&vx)SNAP.vis.vx.push(...vx);
+    if(R-L<MIN_RECT){if(h.includes('w'))L=R-MIN_RECT;else R=L+MIN_RECT;}if(Bt-Tp<MIN_RECT){if(h.includes('n'))Tp=Bt-MIN_RECT;else Bt=Tp+MIN_RECT;}
+    obj.x=L;obj.y=Tp;obj.w=R-L;obj.h=Bt-Tp;}
+  updateSelectionPanel();redraw();});
+function cxPreview(x,y,w,h,kind){const c=document.getElementById('canvas'),ctx=c.getContext('2d');redraw();ctx.fillStyle=kind==='exit'?'rgba(52,211,153,0.35)':kind==='start'?'rgba(251,146,60,0.35)':'rgba(96,165,250,0.35)';ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
+  drawSnapVis(ctx);drawSizeLabel(ctx,kind==='exit'?'door '+fmtM(Math.max(w,h)):fmtM(w)+' x '+fmtM(h),x,y-6);}
+function cxPreviewRoom(x,y,w,h){const ctx=document.getElementById('canvas').getContext('2d');redraw();const R=buildRoom(x,y,w,h,roomOpts());
+  ctx.fillStyle='rgba(148,163,184,0.12)';ctx.fillRect(x,y,w,h);ctx.strokeStyle='#334155';ctx.lineWidth=3;ctx.lineCap='round';
+  for(const s of R.walls){ctx.beginPath();ctx.moveTo(s.x1,s.y1);ctx.lineTo(s.x2,s.y2);ctx.stroke();}
+  ctx.fillStyle='rgba(52,211,153,0.6)';for(const e of R.exits)ctx.fillRect(e.x,e.y,e.w,e.h);
+  drawSnapVis(ctx);drawSizeLabel(ctx,fmtM(w)+' x '+fmtM(h),x,y-6);}
+function cxPreviewLine(a,b){const c=document.getElementById('canvas'),ctx=c.getContext('2d');redraw();ctx.strokeStyle='#334155';ctx.lineWidth=5;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.strokeStyle='#f8fafc';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.fillStyle='#334155';ctx.beginPath();ctx.arc(a.x,a.y,4,0,Math.PI*2);ctx.fill();drawSnapVis(ctx);drawSizeLabel(ctx,fmtM(Math.hypot(b.x-a.x,b.y-a.y)),(a.x+b.x)/2+10,(a.y+b.y)/2-8);}
+canvas.addEventListener('mouseup',e=>{if(state.mode!=='edit'||!state.drag)return;const pt=canvasPt(e),d=state.drag;
+  if(d.kind==='wall'){let ex=d.cur?d.cur.x:pt.x,ey=d.cur?d.cur.y:pt.y;
+    if(Math.hypot(ex-d.start.x,ey-d.start.y)>=8){histPush();state.walls.push({x1:d.start.x,y1:d.start.y,x2:ex,y2:ey});setStatus('Wall segment drawn.');}
+    else setStatus('Wall too short — drag further.');}
+  else if(d.kind==='room'){const q=d.cur||pt,w=Math.abs(q.x-d.start.x),h=Math.abs(q.y-d.start.y);
+    if(w>=40&&h>=40){histPush();const R=buildRoom(Math.min(d.start.x,q.x),Math.min(d.start.y,q.y),w,h,roomOpts());state.walls.push(...R.walls);state.exits.push(...R.exits);
+      setStatus('Room drawn'+(R.exits.length?' with '+R.exits.length+' building exit(s)':'')+(R.notes.length?'. Note: '+R.notes.join('; ')+'.':'.'));if(typeof stRefreshExits==='function')stRefreshExits();}
+    else setStatus('Room too small: drag at least 40 x 40 px.');}
+  else if(d.kind==='exit'||d.kind==='safe'||d.kind==='start'){const q=d.cur||pt,w=Math.abs(q.x-d.start.x),h=Math.abs(q.y-d.start.y);
+    if(w>=MIN_RECT&&h>=MIN_RECT){histPush();const r={x:Math.min(d.start.x,q.x),y:Math.min(d.start.y,q.y),w,h};
+      let msg=`${d.kind.charAt(0).toUpperCase()+d.kind.slice(1)} drawn (${fmtM(w)} x ${fmtM(h)}).`;
+      if(d.kind==='exit'){const lk=snapOn(e)?lockExitToWall(r):null;msg=lk?`Exit locked onto the wall: door width ${fmtM(lk==='h'?r.w:r.h)}.`:`Exit drawn: door width ${fmtM(Math.max(r.w,r.h))}.`;if(typeof stRefreshExits==='function')stRefreshExits();}
+      if(d.kind==='exit')state.exits.push(r);else if(d.kind==='start')state.starts.push(r);else state.safes.push(r);setStatus(msg);}}
+  if(d.snap&&histSnap()!==d.snap)histPush(d.snap);
+  SNAP.vis=null;state.drag=null;redraw();});
+
+window.addEventListener('keydown',e=>{const tag=(e.target&&e.target.tagName)||'';const typing=tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA';
+  if((e.ctrlKey||e.metaKey)&&!typing){const kk=e.key.toLowerCase();if(kk==='z'){e.preventDefault();if(e.shiftKey)histRedo();else histUndo();return;}if(kk==='y'){e.preventDefault();histRedo();return;}}
+  if(!typing&&(e.key==='Delete'||e.key==='Backspace')){deleteSelected();}
+  if(e.key===' '&&state.mode==='sim'&&!typing){e.preventDefault();toggleRun();}
+  if(typing)return;
+  const toolKeys={'1':'select','2':'wall','3':'exit','4':'safe','5':'particle','8':'start','9':'room'};
+  if(toolKeys[e.key]){setTool(toolKeys[e.key]);return;}
+  if(e.key==='v'||e.key==='V'){state.showVel=!state.showVel;redraw();}
+  if(e.key==='p'||e.key==='P'){state.showPbest=!state.showPbest;redraw();}
+  if(e.key==='g'||e.key==='G'){state.showGbest=!state.showGbest;redraw();}
+  if(e.key==='b'||e.key==='B'){state.showBoids=!state.showBoids;redraw();}});
+function toggleRun(){if(state.mode!=='sim'){setMode('sim');return;}if(!state.particles.length){setStatus('No particles.');return;}if(!state.exits.length&&!state.safes.length){setStatus('No exits or safe zones.');return;}
+  state.running=!state.running;document.getElementById('btnRun').textContent=state.running?'⏸ Pause':'▶ Run';setStatus(state.running?'Running…':'Paused.');if(state.running){SIMRUN.acc=1;SIMRUN.last=0;runFrame();}}
+function stepSim(){if(state.mode!=='sim')setMode('sim');if(!state.particles.length){setStatus('No particles.');return;}if(!state.exits.length&&!state.safes.length){setStatus('No exits or safe zones.');return;}
+  psoStep(1);simStatsHtml();document.getElementById('statIter').textContent=state.iter;document.getElementById('statEvac').textContent=state.particles.filter(p=>p.evacuated).length;setStatus(`One step (${simStepSec().toFixed(2)} s).`);redraw();const ev=state.particles.filter(p=>p.evacuated).length;if(ev===state.particles.length)setStatus('All particles evacuated!');}
+function resetSim(){state.running=false;document.getElementById('btnRun').textContent='▶ Run';state.iter=0;
+  for(const p of state.particles){if(p.home){p.pos={x:p.home.x,y:p.home.y};p.vel={x:0,y:0};delete p.home;}p.evacuated=false;p.pbest={x:p.pos.x,y:p.pos.y};p.pbestCost=Infinity;p.targetObj=null;p.simStage=null;p.planExit=-1;p.usedExit=-1;}
+  SIMX.stats=null;simStatsHtml();document.getElementById('statIter').textContent='0';document.getElementById('statEvac').textContent='0';setStatus('Sim reset.');redraw();}
+const SIMRUN={acc:0,last:0};
+function simSpeed(){const el=document.getElementById('simSpeed'),v=el?el.value:'5';return v==='max'?'max':Math.max(0.1,parseFloat(v)||5);}
+function runFrame(ts){if(!state.running)return;if(!state.particles.length){state.running=false;document.getElementById('btnRun').textContent='▶ Run';return;}
+  // how many steps to do this frame: real elapsed time x speed / (seconds per step); Max = 4 steps per frame
+  const sp=simSpeed();let n;if(sp==='max')n=4;else{const now=ts||performance.now(),dt=SIMRUN.last?Math.min(0.1,(now-SIMRUN.last)/1000):0;SIMRUN.last=now;SIMRUN.acc+=dt*sp/simStepSec();n=Math.min(30,Math.floor(SIMRUN.acc));SIMRUN.acc-=n;}
+  if(n<1){state.animId=requestAnimationFrame(runFrame);return;}
+  psoStep(n);simStatsHtml();document.getElementById('statIter').textContent=state.iter;document.getElementById('statEvac').textContent=state.particles.filter(p=>p.evacuated).length;redraw();
+  if(state.particles.filter(p=>p.evacuated).length===state.particles.length){state.running=false;document.getElementById('btnRun').textContent='▶ Run';setStatus('All particles evacuated!');return;}
+  state.animId=requestAnimationFrame(runFrame);}
+
+/* ===================== EVACUATION STUDY: engine, baselines, PSO, stats ===================== */
+const STUDY={CELL:10,FLOW:1.3,TLIMIT:300,TRAIN:[1,2,3],TEST_BASE:1001,study:null,replay:null,
+  COL:{nearest:'#2a78d6',reroute:'#eb6834',pso:'#1baf7a'},
+  NAME:{nearest:'Nearest exit',reroute:'Dynamic reroute',pso:'PSO assignment'},
+  OUTCOL:'#64748b', // people who start outside the building
+  PENMAX:50, // largest exit penalty PSO may use (m)
+  EXCOL:['#7c3aed','#db2777','#a16207','#0e7490','#4d7c0f','#be123c','#475569','#c026d3']}; // exit colors: deliberately different from the method colors in COL
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+class MinHeap{constructor(){this.d=[];this.i=[];}get size(){return this.d.length;}
+  push(d,i){const D=this.d,I=this.i;let k=D.length;D.push(d);I.push(i);while(k>0){const p=(k-1)>>1;if(D[p]<=d)break;D[k]=D[p];I[k]=I[p];k=p;}D[k]=d;I[k]=i;}
+  pop(){const D=this.d,I=this.i,rd=D[0],ri=I[0],ld=D.pop(),li=I.pop(),n=D.length;if(n){let k=0;for(;;){let c=2*k+1;if(c>=n)break;if(c+1<n&&D[c+1]<D[c])c++;if(D[c]>=ld)break;D[k]=D[c];I[k]=I[c];k=c;}D[k]=ld;I[k]=li;}return[rd,ri];}}
+
+/* ---- grid rasterisation of the drawn map ---- */
+function exitName(k){const e=state.exits[k];return e&&e.label?e.label:String.fromCharCode(65+k);}
+function stBuildGrid(pxPerM){
+  const C=STUDY.CELL,W=Math.floor(CANVAS_W/C),H=Math.floor(CANVAS_H/C),N=W*H,cellM=C/pxPerM;
+  const wall=new Uint8Array(N),exitId=new Int16Array(N).fill(-1),startMask=new Uint8Array(N);
+  for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C,i=r*W+c;
+    for(const w of state.walls){
+      if(w.w&&w.h){if(x>=w.x&&x<=w.x+w.w&&y>=w.y&&y<=w.y+w.h){wall[i]=1;break;}}
+      else if(segDistToPoint(w.x1,w.y1,w.x2,w.y2,x,y)<=C/2+0.01){wall[i]=1;break;}}}
+  const exits=state.exits.map((e,k)=>({k,name:exitName(k),rect:e,cells:[],blocked:!!e.blocked,widthM:Math.max(e.w,e.h)/pxPerM}));
+  for(const ex of exits){const e=ex.rect;
+    for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C;if(x>=e.x&&x<=e.x+e.w&&y>=e.y&&y<=e.y+e.h){const i=r*W+c;exitId[i]=ex.k;wall[i]=0;ex.cells.push(i);}}
+    if(!ex.cells.length){const c=clamp(Math.floor((e.x+e.w/2)/C),0,W-1),r=clamp(Math.floor((e.y+e.h/2)/C),0,H-1),i=r*W+c;exitId[i]=ex.k;wall[i]=0;ex.cells.push(i);}}
+  let fallback=false;
+  if(state.starts.length){for(const s of state.starts)for(let r=0;r<H;r++)for(let c=0;c<W;c++){const x=(c+.5)*C,y=(r+.5)*C;if(x>=s.x&&x<=s.x+s.w&&y>=s.y&&y<=s.y+s.h)startMask[r*W+c]=1;}}
+  else{fallback=true;for(let i=0;i<N;i++)startMask[i]=1;}
+  return{W,H,N,cellM,wall,exitId,startMask,exits,fallback};}
+
+function stDistField(g,src){
+  const{W,H,wall,cellM}=g,d=new Float64Array(g.N).fill(Infinity),heap=new MinHeap(),S2=Math.SQRT2*cellM;
+  for(const s of src){d[s]=0;heap.push(0,s);}
+  const DR=[-1,1,0,0,-1,-1,1,1],DC=[0,0,-1,1,-1,1,-1,1];
+  while(heap.size){const[dd,i]=heap.pop();if(dd>d[i])continue;const r=(i/W)|0,c=i-r*W;
+    for(let k=0;k<8;k++){const nr=r+DR[k],nc=c+DC[k];if(nr<0||nr>=H||nc<0||nc>=W)continue;const ni=nr*W+nc;if(wall[ni])continue;
+      if(k>=4&&(wall[nr*W+c]||wall[r*W+nc]))continue;const nd=dd+(k<4?cellM:S2);if(nd<d[ni]){d[ni]=nd;heap.push(nd,ni);}}}
+  return d;}
+
+function stBuildWorld(pxPerM){
+  const g=stBuildGrid(pxPerM);if(!g.exits.length)throw new Error('Draw at least one exit.');
+  // walking to exit e may not pass through any other exit's doorway, open or blocked: going through a door means
+  // leaving the building (e.g. N-court into the quadrangle) and coming back in through another door is not a hallway route
+  const fieldGrids=g.exits.map(e=>{const wl=g.wall.slice();for(const o of g.exits)if(o!==e)for(const i of o.cells)wl[i]=1;return{...g,wall:wl};});
+  const fields=g.exits.map((e,k)=>stDistField(fieldGrids[k],e.cells)),E=g.exits.length,cells=[];
+  // people who can reach a safe zone WITHOUT passing through an exit are outside: they walk straight there
+  const C0=STUDY.CELL,safeCells=[];
+  for(const z of state.safes)for(let r=0;r<g.H;r++)for(let c=0;c<g.W;c++){const x=(c+.5)*C0,y=(r+.5)*C0,i=r*g.W+c;if(x>=z.x&&x<=z.x+z.w&&y>=z.y&&y<=z.y+z.h&&!g.wall[i])safeCells.push(i);}
+  let directGrid=null,directField=null;
+  if(safeCells.length){const wl=new Uint8Array(g.N);for(let i=0;i<g.N;i++)wl[i]=g.wall[i]||(g.exitId[i]>=0?1:0);directGrid={...g,wall:wl};directField=stDistField(directGrid,safeCells);}
+  const usable=i=>{if(g.wall[i]||g.exitId[i]>=0)return false;if(directField&&isFinite(directField[i]))return true;for(const f of fields)if(isFinite(f[i]))return true;return false;};
+  let fixed=false,skipped=0;
+  if(state.particles.length){
+    // one evacuee per placed particle, starting exactly there (if the dot sits on a wall line, use the nearest open cell)
+    fixed=true;const C=STUDY.CELL;
+    for(const p of state.particles){const q=p.home||p.pos,c0=clamp(Math.floor(q.x/C),0,g.W-1),r0=clamp(Math.floor(q.y/C),0,g.H-1);let best=-1,bd=Infinity;
+      for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){const r=r0+dr,c=c0+dc;if(r<0||r>=g.H||c<0||c>=g.W)continue;const i=r*g.W+c,d=Math.hypot((c+.5)*C-q.x,(r+.5)*C-q.y);if(d<bd&&usable(i)){bd=d;best=i;}}
+      if(best>=0)cells.push(best);else skipped++;}
+    if(!cells.length)throw new Error('None of the placed particles can reach an exit. Move them inside the building, or delete them to use START zones.');}
+  else{for(let i=0;i<g.N;i++)if(g.startMask[i]&&usable(i))cells.push(i);
+    if(!cells.length)throw new Error('No start cells can reach an exit. Draw a START zone inside the walls that connects to an exit.');}
+  const nc=cells.length,cellDist=new Float64Array(nc*E);for(let j=0;j<nc;j++)for(let e=0;e<E;e++)cellDist[j*E+e]=fields[e][cells[j]];
+  const outdoor=new Uint8Array(nc),direct=new Float64Array(nc).fill(Infinity);
+  if(directField)for(let j=0;j<nc;j++){const d=directField[cells[j]];if(isFinite(d)){outdoor[j]=1;direct[j]=d;}}
+  // people inside the building (they use exits); people outside walk straight to a safe zone
+  const ins=[];for(let j=0;j<nc;j++)if(!outdoor[j])ins.push(j);
+  const dest=stSafeDest(g,ins.map(j=>cells[j]),safeCells);
+  const nOut=outdoor.reduce((a,b)=>a+b,0);
+  if(nOut&&!fixed)dest.destNotes.push('part of a START zone is outside the building (it can reach a safe zone without an exit), so people placed there walk straight to the safe zone');
+  return{g,fields,fieldGrids,E,cells,cellDist,pxPerM,fixed,skipped,outdoor,direct,directField,directGrid,nOutdoor:nOut,...dest};}
+/* Earthquake drill: after leaving through an exit, people walk OUTSIDE to the nearest safe zone (assembly area).
+   "Inside" = every cell people can reach from their start positions without passing through an exit. The outdoor walk
+   may not go back through the inside. post[e] = walking distance (m) from exit e to the nearest safe zone. */
+function stSafeDest(g,startCells,safeCellsIn){
+  const E=g.exits.length,post=new Float64Array(E),notes=[];
+  if(!state.safes.length)return{post,safeField:null,outGrid:null,safeCount:0,destNotes:notes};
+  const inside=new Uint8Array(g.N),stack=[];for(const c of startCells)if(!inside[c]){inside[c]=1;stack.push(c);}
+  const DR=[-1,1,0,0],DC=[0,0,-1,1];
+  while(stack.length){const i=stack.pop(),r=(i/g.W)|0,c=i-r*g.W;for(let k=0;k<4;k++){const nr=r+DR[k],nc=c+DC[k];if(nr<0||nr>=g.H||nc<0||nc>=g.W)continue;const ni=nr*g.W+nc;
+    if(inside[ni]||g.wall[ni]||g.exitId[ni]>=0)continue;inside[ni]=1;stack.push(ni);}}
+  // "inside" never contains a safe zone: anyone who can reach one without an exit was already counted as outside
+  const safeCells=safeCellsIn,wall=new Uint8Array(g.N);for(let i=0;i<g.N;i++)wall[i]=g.wall[i]||inside[i];
+  const outGrid={...g,wall},safeField=safeCells.length?stDistField(outGrid,safeCells):new Float64Array(g.N).fill(Infinity);
+  for(const ex of g.exits){let m=Infinity;for(const i of ex.cells)if(safeField[i]<m)m=safeField[i];post[ex.k]=m;if(!isFinite(m))notes.push('Exit '+ex.name+' has no outdoor route to a safe zone, so it is not used');}
+  return{post,safeField,outGrid,safeCount:state.safes.length,destNotes:notes};}
+
+function stMakeAgents(w,n,seed){
+  if(w.fixed)n=w.cells.length;
+  const rng=mulberry32(seed*7919+13),E=w.E,nc=w.cells.length,dist=new Float64Array(n*E),speed=new Float64Array(n),delay=new Float64Array(n),cell=new Int32Array(n);
+  const out=new Uint8Array(n),direct=new Float64Array(n);
+  for(let i=0;i<n;i++){const j=w.fixed?i:Math.floor(rng()*nc);out[i]=w.outdoor?w.outdoor[j]:0;direct[i]=w.direct?w.direct[j]:Infinity;cell[i]=w.cells[j];for(let e=0;e<E;e++)dist[i*E+e]=w.cellDist[j*E+e];}
+  for(let i=0;i<n;i++)speed[i]=1.2+0.2*rng();for(let i=0;i<n;i++)delay[i]=10+20*rng();
+  return{n,E,dist,speed,delay,cell,seed,post:w.post,out,direct};}
+
+/* ---- event-based engine: FIFO door queues, service time 1/(flow*width) ---- */
+function stSimulate(ag,choice,widths,tLimit=STUDY.TLIMIT){
+  const n=ag.n,E=widths.length,svc=widths.map(w=>1/(STUDY.FLOW*w)),arrive=new Float64Array(n),start=new Float64Array(n).fill(Infinity);let finish=new Float64Array(n).fill(Infinity);
+  const ids=Array.from({length:E},()=>[]);
+  for(let i=0;i<n;i++){if(ag.out&&ag.out[i]){arrive[i]=Infinity;continue;}const e=choice[i];arrive[i]=ag.delay[i]+ag.dist[i*ag.E+e]/ag.speed[i];ids[e].push(i);}
+  const maxQ=new Array(E).fill(0),order=[];
+  for(let e=0;e<E;e++){const a=ids[e];a.sort((p,q)=>(arrive[p]-arrive[q])||(p-q));order.push(a);
+    const s=new Float64Array(a.length);let tf=0;
+    for(let j=0;j<a.length;j++){const ai=arrive[a[j]];if(!isFinite(ai)){s[j]=Infinity;continue;}tf=ai>tf?ai:tf;s[j]=tf;start[a[j]]=tf;finish[a[j]]=tf+svc[e];tf+=svc[e];}
+    let p=0;for(let j=0;j<a.length;j++){const ai=arrive[a[j]];if(!isFinite(ai))break;while(p<a.length&&s[p]<=ai)p++;const q=j+1-Math.min(p,j+1);if(q>maxQ[e])maxQ[e]=q;}}
+  // arrival at the safe zone = leaving the door + walking outside to the nearest safe zone (0 if no safe zone is drawn)
+  const doorFinish=finish;if(ag.post){const fin=new Float64Array(n);for(let i=0;i<n;i++)fin[i]=ag.out&&ag.out[i]?ag.delay[i]+ag.direct[i]/ag.speed[i]:doorFinish[i]+ag.post[choice[i]]/ag.speed[i];finish=fin;}
+  let sum=0,cnt=0,cap=0,mk=0;for(let i=0;i<n;i++){const f=finish[i];cap+=Math.min(f,tLimit);if(f<=tLimit){sum+=f;cnt++;if(f>mk)mk=f;}}
+  return{avg:cnt?sum/cnt:tLimit,capped:cap/n,maxQueue:Math.max(...maxQ),nEvac:cnt,makespan:cnt?mk:tLimit,loads:ids.map(a=>a.length),doorMaxQ:maxQ,arrive,start,doorFinish,finish,order,svc};}
+
+function stNearest(ag,open){const ch=new Int32Array(ag.n);for(let i=0;i<ag.n;i++){let b=open[0],bd=Infinity;for(const e of open){const d=ag.dist[i*ag.E+e];if(d<bd){bd=d;b=e;}}ch[i]=b;}return ch;}
+function stReroute(ag,open,widths){
+  const svc=widths.map(w=>1/(STUDY.FLOW*w)),com=widths.map(()=>[]),ch=new Int32Array(ag.n),ord=Array.from({length:ag.n},(_,i)=>i).sort((a,b)=>(ag.delay[a]-ag.delay[b])||(a-b));
+  for(const i of ord){if(ag.out&&ag.out[i]){ch[i]=open[0];continue;}let be=open[0],bf=Infinity,ba=0;
+    for(const e of open){const d=ag.dist[i*ag.E+e];if(!isFinite(d))continue;const a=ag.delay[i]+d/ag.speed[i];let tf=0;for(const x of com[e]){if(x>a)break;tf=Math.max(x,tf)+svc[e];}const f=Math.max(a,tf)+svc[e]+(ag.post?ag.post[e]/ag.speed[i]:0);if(f<bf){bf=f;be=e;ba=a;}}
+    ch[i]=be;const arr=com[be];let lo=0,hi=arr.length;while(lo<hi){const m=(lo+hi)>>1;if(arr[m]<=ba)lo=m+1;else hi=m;}arr.splice(lo,0,ba);}
+  return ch;}
+
+/* ---- PSO over exit penalties ----
+   A particle = one penalty (metres) per open exit. Each person inside picks the open exit with the lowest
+   (walk to the exit + walk outside to the nearest safe zone + penalty of that exit). All penalties 0 = shortest route
+   to safety. A penalty makes an exit count as farther, so only people for whom it is clearly best still use it.
+   Particle 0 starts at all zeros, so on the training crowds PSO can only match or beat the shortest-route rule. */
+function stPenChoose(ag,open,pen){const ch=new Int32Array(ag.n);
+  for(let i=0;i<ag.n;i++){if(ag.out&&ag.out[i]){ch[i]=open[0];continue;}let b=open[0],bd=Infinity;
+    for(const e of open){const d=ag.dist[i*ag.E+e]+(ag.post?ag.post[e]:0)+pen[e];if(d<bd){bd=d;b=e;}}ch[i]=b;}
+  return ch;}
+async function stPSOPen(fit,open,E,o,onIter){
+  const{particles:P=20,iters:T=30,w=0.7,c1=1.5,c2=1.5,seed=0,hi=STUDY.PENMAX}=o,rng=mulberry32(seed+99),vmax=0.2*hi,D=open.length;
+  const full=x=>{const pen=new Array(E).fill(0);open.forEach((e,d)=>{pen[e]=x[d];});return pen;};let evals=0;
+  const ev=x=>{evals++;return fit(full(x));};
+  const x=[],v=[],pb=[],pc=[];
+  for(let i=0;i<P;i++){x.push(Array.from({length:D},()=>i===0?0:rng()*hi));v.push(Array.from({length:D},()=>(rng()*2-1)*vmax*0.2));pb.push(x[i].slice());pc.push(ev(x[i]));}
+  let g=0;for(let i=1;i<P;i++)if(pc[i]<pc[g])g=i;let gb=pb[g].slice(),gc=pc[g];const hist=[gc];
+  for(let t=0;t<T;t++){
+    for(let i=0;i<P;i++){for(let d=0;d<D;d++){const r1=rng(),r2=rng();v[i][d]=clamp(w*v[i][d]+c1*r1*(pb[i][d]-x[i][d])+c2*r2*(gb[d]-x[i][d]),-vmax,vmax);x[i][d]=clamp(x[i][d]+v[i][d],0,hi);}
+      const c=ev(x[i]);if(c<pc[i]){pc[i]=c;pb[i]=x[i].slice();if(c<gc){gc=c;gb=x[i].slice();}}}
+    hist.push(gc);if(onIter)await onIter(t+1,T,gc);}
+  return{best:full(gb),cost:gc,hist,evals,zeroCost:pc.length?fit(new Array(E).fill(0)):Infinity};}
+
+/* ---- statistics ---- */
+const ST_T95=[12.706,4.303,3.182,2.776,2.571,2.447,2.365,2.306,2.262,2.228,2.201,2.179,2.160,2.145,2.131,2.120,2.110,2.101,2.093,2.086,2.080,2.074,2.069,2.064,2.060,2.056,2.052,2.048,2.045,2.042];
+function stT(df){return df<1?0:df<=30?ST_T95[df-1]:df<=60?2.0:1.96;}
+function stSummary(a){const n=a.length,m=a.reduce((p,q)=>p+q,0)/n,sd=n>1?Math.sqrt(a.reduce((p,q)=>p+(q-m)**2,0)/(n-1)):0;return{mean:m,sd,ci:n>1?stT(n-1)*sd/Math.sqrt(n):0,n};}
+function stWilcoxon(d){
+  const x=d.filter(v=>Math.abs(v)>1e-9),n=x.length;if(!n)return 1;
+  const ab=x.map(Math.abs),idx=ab.map((_,i)=>i).sort((a,b)=>ab[a]-ab[b]),rk=new Array(n);let i=0,tie=0,ties=false;
+  while(i<n){let j=i;while(j+1<n&&Math.abs(ab[idx[j+1]]-ab[idx[i]])<1e-9)j++;const r=(i+j)/2+1;for(let k=i;k<=j;k++)rk[idx[k]]=r;const t=j-i+1;if(t>1){ties=true;tie+=t**3-t;}i=j+1;}
+  let Wp=0;for(let k=0;k<n;k++)if(x[k]>0)Wp+=rk[k];
+  if(!ties&&n<=30){const tot=n*(n+1)/2,dp=new Float64Array(tot+1);dp[0]=1;for(let r=1;r<=n;r++)for(let s=tot;s>=r;s--)dp[s]+=dp[s-r];let lo=0,hi=0;for(let s=0;s<=Wp;s++)lo+=dp[s];for(let s=Wp;s<=tot;s++)hi+=dp[s];return Math.min(1,2*Math.min(lo,hi)/Math.pow(2,n));}
+  const mu=n*(n+1)/4,sd=Math.sqrt(n*(n+1)*(2*n+1)/24-tie/48);if(sd===0)return 1;const z=(Math.abs(Wp-mu)-0.5)/sd;return Math.min(1,2*(1-stPhi(Math.max(z,0))));}
+function stPhi(z){const t=1/(1+0.2316419*Math.abs(z)),p=0.3989423*Math.exp(-z*z/2)*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));return z>=0?1-p:p;}
+function stPaired(cond,base,key){const a=cond.rows.pso.map(r=>r[key]),b=cond.rows[base].map(r=>r[key]),d=a.map((v,i)=>v-b[i]),s=stSummary(d),mb=stSummary(b).mean;
+  return{meanDiff:s.mean,ci:s.ci,pct:mb?100*s.mean/mb:0,better:d.filter(v=>v<-1e-9).length,n:d.length,p:stWilcoxon(d)};}
+
+/* ---- the study run ---- */
+const stTick=()=>new Promise(r=>setTimeout(r,0));
+async function stRun(P,onProg){
+  const world=stBuildWorld(P.pxPerM);if(world.fixed)P={...P,n:world.cells.length};const widths=world.g.exits.map(e=>e.widthM),names=world.g.exits.map(e=>e.name),E=world.E;
+  const userBlocked=world.g.exits.filter(e=>e.blocked||!isFinite(world.post[e.k])).map(e=>e.k);
+  const train=STUDY.TRAIN.map(s=>stMakeAgents(world,P.n,s)),seeds=Array.from({length:P.seeds},(_,i)=>STUDY.TEST_BASE+i),test=seeds.map(s=>stMakeAgents(world,P.n,s));
+  const scen=[{name:'As drawn',blocked:userBlocked}];
+  if(P.alsoBlock){const open=[...Array(E).keys()].filter(e=>!userBlocked.includes(e));if(open.length>1){const use=new Array(E).fill(0);for(const ag of train)for(const e of stNearest(ag,open))use[e]++;let top=open[0];for(const e of open)if(use[e]>use[top])top=e;scen.push({name:'Most-used exit ('+names[top]+') blocked',blocked:[...userBlocked,top]});}}
+  const conds=[];
+  for(let si=0;si<scen.length;si++){const sc=scen[si],open=[...Array(E).keys()].filter(e=>!sc.blocked.includes(e));if(!open.length)continue;
+    const rows={nearest:[],reroute:[],pso:[]};
+    const row=(m,ch,comp)=>({avg:m.avg,maxQueue:m.maxQueue,nEvac:m.nEvac,makespan:m.makespan,comp,loads:m.loads.slice()});
+    for(let k=0;k<test.length;k++){const ag=test[k];let t=performance.now();const c1=stNearest(ag,open);let c=(performance.now()-t)/1000;rows.nearest.push(row(stSimulate(ag,c1,widths),c1,c));
+      t=performance.now();const c2=stReroute(ag,open,widths);c=(performance.now()-t)/1000;rows.reroute.push(row(stSimulate(ag,c2,widths),c2,c));}
+    // fitness on the 3 training crowds: capped mean time to safety + queue weight x longest line
+    const fit=pen=>{let tot=0;for(const ag of train){const m=stSimulate(ag,stPenChoose(ag,open,pen),widths);tot+=m.capped+P.qw*m.maxQueue;}return tot/train.length;};
+    const t0=performance.now();
+    const res=await stPSOPen(fit,open,E,{particles:P.particles,iters:P.iters,seed:P.psoSeed||0},async(it,T)=>{if(onProg)onProg(`Scenario ${si+1}/${scen.length} (${sc.name}): PSO iteration ${it}/${T}`,(si+it/T)/scen.length);await stTick();});
+    const psoSec=(performance.now()-t0)/1000,pen=res.best;
+    for(let k=0;k<test.length;k++){const ag=test[k],ch=stPenChoose(ag,open,pen);rows.pso.push(row(stSimulate(ag,ch,widths),ch,psoSec));}
+    conds.push({name:sc.name,blocked:sc.blocked.map(e=>names[e]),open,rows,plan:pen,hist:res.hist,evals:res.evals,zeroCost:res.zeroCost,psoSec,degenerate:open.length===1});}
+  if(onProg)onProg('Done.',1);
+  return{params:P,world,widths,names,seeds,conds,toSafe:world.safeCount>0,geomKey:geomKey()};}
+
+function stCsv(study){const L=['scenario,blocked,method,seed,avg_time_to_safety_s,max_queue,n_reached_safety,last_arrival_s,comp_time_s,loads'];
+  for(const c of study.conds)for(const m of ['nearest','reroute','pso'])c.rows[m].forEach((r,k)=>L.push([JSON.stringify(c.name),c.blocked.join('+')||'none',m,study.seeds[k],r.avg.toFixed(4),r.maxQueue,r.nEvac,r.makespan.toFixed(4),r.comp.toFixed(6),r.loads.map((v,e)=>study.names[e]+':'+v).join('|')].join(',')));
+  return L.join('\n');}
+
+/* ===================== STUDY UI: demo map, replay, charts, panels ===================== */
+function stDemoMap(){
+  clearMap();
+  state.walls.push({x1:100,y1:100,x2:1200,y2:100},{x1:100,y1:100,x2:100,y2:320},{x1:100,y1:360,x2:100,y2:380},{x1:1200,y1:100,x2:1200,y2:340},
+    {x1:100,y1:380,x2:900,y2:380},{x1:940,y1:380,x2:1200,y2:380},{x1:400,y1:100,x2:400,y2:310},{x1:800,y1:100,x2:800,y2:310},
+    {x1:100,y1:310,x2:280,y2:310},{x1:320,y1:310,x2:630,y2:310},{x1:670,y1:310,x2:980,y2:310},{x1:1020,y1:310,x2:1200,y2:310});
+  state.exits.push({x:84,y:320,w:26,h:40},{x:900,y:372,w:40,h:26},{x:1190,y:340,w:26,h:40});
+  state.starts.push({x:115,y:115,w:270,h:185},{x:415,y:115,w:370,h:185},{x:815,y:115,w:370,h:185});
+  state.safes.push({x:450,y:520,w:400,h:180}); // assembly area: open field below the building
+  const sc=document.getElementById('stScale');if(sc)sc.value=20;
+  STUDY.study=null;STUDY.replay=null;stRefreshExits();setStatus('Study demo map loaded: 3 rooms, 3 exits (A left, B bottom, C right), 1 safe zone (assembly area) below. Switch to Study mode and press Run.');redraw();}
+
+/* ---- College preset, from the ground-floor emergency escape plans (north: 25-Classroom Building,
+   south: Communication Arts Building). Ground floor only. Scale from one assumption: a classroom is 7 m wide.
+   9 px = 1 m. Outer building about 84 m x 63 m. A 3 m corridor runs all around the quadrangle side; rooms are on
+   the outer side. North-south length of the west/east sides and the east lobby are estimates (those plans were not available).
+   Exits (building doors where lines form):
+   Widths are estimates ranked by the group: S = S-court = E (widest) > N-court > NW = NE (a single door).
+     NW, NE   north wall at the ends of the west/east corridors ("DN" exits on the plan), single door, 1 m
+     S        south lobby main entrance, 4 m
+     E        east lobby entrance, 4 m
+     N-court  one opening from the north corridor into the quadrangle, 3 m
+     S-court  opening from the south corridor / lobby into the quadrangle, 4 m
+   Safe zones = assembly points on the plans (outside both north corners, in front of the south lobby, the quadrangle),
+   plus open ground on the west and east sides.
+   The four corner blocks (stairs, toilets) have a door to the corridor; nobody starts there by default.
+   Room doors are drawn 2.2 m wide (the map grid is 1.1 m); room doors have no capacity limit in the model, so this
+   only affects the drawing, not the door lines. */
+function stCollegeMap(){
+  clearMap();
+  const W=state.walls,X0=270,X1=1030,Y0=125,Y1=695,      // outer walls
+        RX0=370,RX1=930,RY0=225,RY1=595,                    // corridor / room line (rooms are outside it)
+        QX0=400,QX1=900,QY0=255,QY1=565;                    // quadrangle wall (corridor is between the two)
+  const door=c=>{const a=Math.round((c-15)/10)*10+5;return[a,a+20];};   // 20 px gap starting on a grid-cell centre
+  const hw=(y,x0,x1,gaps=[])=>{let t=x0;for(const [a,b] of gaps.slice().sort((p,q)=>p[0]-q[0])){if(a>t)W.push({x1:t,y1:y,x2:a,y2:y});t=Math.max(t,b);}if(x1>t)W.push({x1:t,y1:y,x2:x1,y2:y});};
+  const vw=(x,y0,y1,gaps=[])=>{let t=y0;for(const [a,b] of gaps.slice().sort((p,q)=>p[0]-q[0])){if(a>t)W.push({x1:x,y1:t,x2:x,y2:a});t=Math.max(t,b);}if(y1>t)W.push({x1:x,y1:t,x2:x,y2:y1});};
+  // outer walls and quadrangle walls (exits are drawn on top of them)
+  hw(Y0,X0,X1);hw(Y1,X0,X1);vw(X0,Y0,Y1);vw(X1,Y0,Y1);
+  hw(QY0,QX0,QX1);hw(QY1,QX0,QX1);vw(QX0,QY0,QY1);vw(QX1,QY0,QY1);
+  const rooms=[];
+  // north side: 8 classrooms between the two corridor stubs that lead to NW and NE
+  const nN=8,nw=(QX1-QX0)/nN,northDoors=[];
+  for(let k=0;k<=nN;k++)vw(QX0+k*nw,Y0,RY0);
+  for(let k=0;k<nN;k++){const x=QX0+k*nw;rooms.push({x:x+5,y:Y0+5,w:nw-10,h:RY0-Y0-10});northDoors.push(door(x+nw/2));}
+  hw(RY0,QX0,QX1,northDoors);
+  vw(RX0,Y0,RY0,[door(175)]);vw(RX1,Y0,RY0,[door(175)]);     // north corner blocks (stairs, toilets) open onto the corridor stubs
+  hw(RY0,X0,RX0);hw(RY0,RX1,X1);
+  // south side: 3 rooms, the lobby (open to the corridor), 3 rooms
+  const LX0=590,LX1=710,sw=(LX0-QX0)/3,southDoors=[];
+  for(let k=0;k<=3;k++){vw(QX0+k*sw,RY1,Y1);vw(LX1+k*sw,RY1,Y1);}
+  for(let k=0;k<3;k++){for(const x of [QX0+k*sw,LX1+k*sw]){rooms.push({x:x+5,y:RY1+5,w:sw-10,h:Y1-RY1-10});southDoors.push(door(x+sw/2));}}
+  hw(RY1,QX0,LX0,southDoors.filter(d=>d[0]<LX0));hw(RY1,LX1,QX1,southDoors.filter(d=>d[0]>LX1));
+  hw(RY1,X0,QX0,[door(385)]);hw(RY1,QX1,X1,[door(915)]);     // south corner blocks (stairs, toilets) open onto the corridor ends
+  // west side: 6 rooms
+  const nWr=6,wh=(RY1-RY0)/nWr,westDoors=[];
+  for(let k=1;k<nWr;k++)hw(RY0+k*wh,X0,RX0);
+  for(let k=0;k<nWr;k++){const y=RY0+k*wh;rooms.push({x:X0+5,y:y+5,w:RX0-X0-10,h:wh-10});westDoors.push(door(y+wh/2));}
+  vw(RX0,RY0,RY1,westDoors);
+  // east side: 2 rooms, the east lobby (open to the corridor), 2 rooms
+  const EY0=380,EY1=440,eh=(EY0-RY0)/2,eastDoors=[];
+  for(const y of [RY0+eh,EY0,EY1,EY1+eh])hw(y,RX1,X1);
+  for(const y of [RY0,RY0+eh,EY1,EY1+eh]){rooms.push({x:RX1+5,y:y+5,w:X1-RX1-10,h:eh-10});eastDoors.push(door(y+eh/2));}
+  vw(RX1,RY0,EY0,eastDoors.filter(d=>d[0]<EY0));vw(RX1,EY1,RY1,eastDoors.filter(d=>d[0]>EY1));
+  // exits
+  state.exits.push(
+    {x:381,y:121,w:9,h:8,label:'NW'},{x:911,y:121,w:9,h:8,label:'NE'},            // single doors, 1 m (width = the longer side, so kept thin)
+    {x:632,y:687,w:36,h:16,label:'S'},{x:1022,y:392,w:16,h:36,label:'E'},          // 4 m
+    {x:637,y:247,w:27,h:16,label:'N-court'},                                       // 3 m
+    {x:632,y:557,w:36,h:16,label:'S-court'});                                      // 4 m
+  // assembly points (safe zones)
+  state.safes.push({x:440,y:295,w:420,h:230},{x:285,y:20,w:170,h:80},{x:845,y:20,w:170,h:80},{x:550,y:725,w:200,h:85},
+    {x:45,y:310,w:200,h:200},{x:1055,y:310,w:200,h:200});   // west and east open ground
+  // people start in the classrooms and offices
+  state.starts.push(...rooms);
+  const sc=document.getElementById('stScale');if(sc)sc.value=9;
+  const nEl=document.getElementById('stN');if(nEl)nEl.value=600;
+  STUDY.study=null;STUDY.replay=null;stRefreshExits();
+  setStatus('College map loaded from the escape plans (ground floor, classroom = 7 m, about 84 m x 63 m): 24 rooms, 6 exits, 6 assembly areas. Evacuees set to 600 (about 25 per room).');redraw();}
+
+/* ---- replay ---- */
+function stPath(w,ex,cell){return stPathOn(w.fields[ex],w.fieldGrids?w.fieldGrids[ex]:w.g,cell);}
+function stPathOn(f,g,cell){
+  const W=g.W,H=g.H,C=STUDY.CELL,S2=Math.SQRT2*g.cellM;let r=(cell/W)|0,c=cell-r*W;
+  const pts=[[(c+.5)*C,(r+.5)*C]],cum=[0],DR=[-1,1,0,0,-1,-1,1,1],DC=[0,0,-1,1,-1,1,-1,1];
+  for(let guard=0;f[r*W+c]>0&&isFinite(f[r*W+c])&&guard<3000;guard++){let bk=-1,bd=f[r*W+c];
+    for(let k=0;k<8;k++){const nr=r+DR[k],nc=c+DC[k];if(nr<0||nr>=H||nc<0||nc>=W)continue;const ni=nr*W+nc;if(g.wall[ni])continue;if(k>=4&&(g.wall[nr*W+c]||g.wall[r*W+nc]))continue;if(f[ni]<bd-1e-9){bd=f[ni];bk=k;}}
+    if(bk<0)break;r+=DR[bk];c+=DC[bk];pts.push([(c+.5)*C,(r+.5)*C]);cum.push(cum[cum.length-1]+(bk<4?g.cellM:S2));}
+  return{pts,cum};}
+function stPosOn(p,s){const cum=p.cum,n=cum.length;if(s<=0||n<2)return p.pts[0];if(s>=cum[n-1])return p.pts[n-1];let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(cum[m]<=s)lo=m;else hi=m;}const f=(s-cum[lo])/(cum[hi]-cum[lo]||1);return[p.pts[lo][0]+(p.pts[hi][0]-p.pts[lo][0])*f,p.pts[lo][1]+(p.pts[hi][1]-p.pts[lo][1])*f];}
+function stReplayBuild(study,cond,method,si){
+  const w=study.world,widths=study.widths,ag=stMakeAgents(w,study.params.n,study.seeds[si]);
+  let ch;if(method==='nearest')ch=stNearest(ag,cond.open);else if(method==='reroute')ch=stReroute(ag,cond.open,widths);else ch=stPenChoose(ag,cond.open,cond.plan);
+  const sim=stSimulate(ag,ch,widths),E=widths.length,C=STUDY.CELL,paths=[],pos=new Int32Array(ag.n).fill(-1);
+  for(let i=0;i<ag.n;i++)paths.push(ag.out[i]?stPathOn(w.directField,w.directGrid,ag.cell[i]):stPath(w,ch[i],ag.cell[i]));
+  sim.order.forEach(a=>a.forEach((id,j)=>{pos[id]=j;}));
+  const dir=[];for(let e=0;e<E;e++){const ctr=centerOf(state.exits[e]);let sx=0,sy=0,n=0;for(let i=0;i<ag.n;i++)if(ch[i]===e&&!ag.out[i]){sx+=paths[i].pts[0][0];sy+=paths[i].pts[0][1];n++;}
+    let dx=n?sx/n-ctr.x:0,dy=n?sy/n-ctr.y:-1;const L=Math.hypot(dx,dy)||1;dir.push([dx/L,dy/L]);}
+  let tEnd=10;for(let i=0;i<ag.n;i++)if(sim.finish[i]<=STUDY.TLIMIT)tEnd=Math.max(tEnd,sim.finish[i]);
+  let outPath=null,spot=null;
+  if(w.safeField){outPath=[];for(const ex of w.g.exits){let b=-1,bd=Infinity;for(const i of ex.cells)if(w.safeField[i]<bd){bd=w.safeField[i];b=i;}outPath.push(b>=0&&isFinite(bd)?stPathOn(w.safeField,w.outGrid,b):null);}
+    // where each person stands once they reach the safe zone (spread inside the zone they arrive at)
+    spot=[];for(let i=0;i<ag.n;i++){const op=ag.out[i]?paths[i]:outPath[ch[i]];if(!op){spot.push(null);continue;}const end=op.pts[op.pts.length-1];
+      const z=state.safes.find(r=>end[0]>=r.x-1&&end[0]<=r.x+r.w+1&&end[1]>=r.y-1&&end[1]<=r.y+r.h+1)||{x:end[0]-10,y:end[1]-10,w:20,h:20};
+      const h1=Math.sin((i+1)*12.9898+ag.seed*78.233)*43758.5453,h2=Math.sin((i+1)*39.3468+ag.seed*11.135)*24634.6345;const u=h1-Math.floor(h1),v=h2-Math.floor(h2),m=Math.min(6,z.w/3,z.h/3);
+      spot.push([z.x+m+u*(z.w-2*m),z.y+m+v*(z.h-2*m)]);}}
+  return{ag,ch,sim,paths,pos,dir,outPath,spot,tEnd:Math.min(tEnd+2,STUDY.TLIMIT),cond,method,si,t:0,playing:false,speed:5,last:0};}
+
+function stReplayLegendHtml(rp){
+  const chip=(c,t,extra='')=>`<span><i style="background:${c};${extra}"></i>${t}</span>`;
+  let h='<div style="margin-top:8px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff"><div style="font-size:12px;font-weight:600">Showing: '+STUDY.NAME[rp.method]+' &middot; dot color = exit used</div><div class="chips">';
+  for(const e of rp.cond.open)h+=chip(STUDY.EXCOL[e%8],exitName(e));
+  if(rp.ag.out.some(v=>v))h+=chip(STUDY.OUTCOL,'started outside');
+  h+='</div><div class="chips" style="color:var(--muted)">'+chip('#94a3b8','not moving yet','opacity:.4')+chip('#94a3b8','in line','box-shadow:0 0 0 1.5px #0f172a')+(rp.spot?chip('#94a3b8','arrived (in safe zone)','opacity:.55'):'')+'</div></div>';
+  return h;}
+function stDrawReplay(cx,rp){
+  const t=rp.t,ag=rp.ag,sim=rp.sim,E=sim.order.length,ctrs=state.exits.map(centerOf);
+  const started=sim.order.map(a=>{let c=0;for(const id of a){if(sim.start[id]<=t)c++;else break;}return c;});
+  const q=new Array(E).fill(0);let out=0;
+  for(let i=0;i<ag.n;i++){const e=rp.ch[i],outside=ag.out[i],col=outside?STUDY.OUTCOL:STUDY.EXCOL[e%8],fin=sim.finish[i];
+    if(fin<=t&&fin<=STUDY.TLIMIT){out++;if(rp.spot&&rp.spot[i]){cx.globalAlpha=0.55;cx.fillStyle=col;cx.beginPath();cx.arc(rp.spot[i][0],rp.spot[i][1],dotR(3.2),0,Math.PI*2);cx.fill();cx.globalAlpha=1;}continue;}
+    let x,y,ring=false,alpha=1;const p=rp.paths[i];
+    if(outside){if(t<ag.delay[i]){x=p.pts[0][0];y=p.pts[0][1];alpha=0.4;}else{const L=p.cum[p.cum.length-1],fr=fin>ag.delay[i]?(t-ag.delay[i])/(fin-ag.delay[i]):1;[x,y]=stPosOn(p,Math.min(1,fr)*L);}}
+    else if(!isFinite(sim.arrive[i])){x=p.pts[0][0];y=p.pts[0][1];alpha=0.3;}
+    else if(t<ag.delay[i]){x=p.pts[0][0];y=p.pts[0][1];alpha=0.4;}
+    else if(t<sim.arrive[i]){const s=Math.min((t-ag.delay[i])*ag.speed[i],p.cum[p.cum.length-1]);[x,y]=stPosOn(p,s);}
+    else if(t>=sim.start[i]){const op=rp.outPath&&rp.outPath[e],df=sim.doorFinish[i];
+      if(op&&t>=df){const L=op.cum[op.cum.length-1],fr=fin>df?(t-df)/(fin-df):1;[x,y]=stPosOn(op,fr*L);}else{x=ctrs[e].x;y=ctrs[e].y;}}
+    else{const k=rp.pos[i]-started[e],d=rp.dir[e],col6=k%6,row=Math.floor(k/6);q[e]++;ring=true;
+      x=ctrs[e].x+d[0]*(14+row*8)+(-d[1])*(col6-2.5)*8;y=ctrs[e].y+d[1]*(14+row*8)+d[0]*(col6-2.5)*8;}
+    cx.globalAlpha=alpha;cx.fillStyle=col;cx.beginPath();cx.arc(x,y,dotR(3.6),0,Math.PI*2);cx.fill();
+    if(ring){cx.strokeStyle='#0f172a';cx.lineWidth=1;cx.stroke();}}
+  cx.globalAlpha=1;cx.font='bold 12px sans-serif';
+  for(let e=0;e<E;e++){if(q[e]>0){const d=rp.dir[e];cx.fillStyle='#0f172a';cx.textAlign='center';cx.fillText('queue '+q[e],ctrs[e].x+d[0]*26,ctrs[e].y+d[1]*26-(d[1]>0?-14:6));}}
+  for(let e=0;e<E;e++){if(rp.cond.open.includes(e)){const r=state.exits[e];cx.strokeStyle=STUDY.EXCOL[e%8];cx.lineWidth=3;cx.strokeRect(r.x-3,r.y-3,r.w+6,r.h+6);}}
+  hud(cx,()=>{const txt=`t = ${t.toFixed(1)} s    ${rp.spot?'at safe zone':'evacuated'} ${out}/${ag.n}    Method: ${STUDY.NAME[rp.method]}    ${rp.cond.name}`;
+    cx.font='bold 14px sans-serif';cx.textAlign='left';cx.fillStyle='rgba(255,255,255,0.85)';cx.fillRect(6,6,cx.measureText(txt).width+12,24);cx.fillStyle='#0f172a';cx.fillText(txt,12,22);});
+
+  rp.out=out;}
+
+function stDrawSafes(cx){for(const z of state.safes){cx.fillStyle='rgba(96,165,250,0.18)';cx.strokeStyle='#1d4ed8';cx.lineWidth=1.5;cx.fillRect(z.x,z.y,z.w,z.h);cx.strokeRect(z.x,z.y,z.w,z.h);cx.fillStyle='#1d4ed8';cx.font='bold 11px sans-serif';cx.textAlign='left';cx.fillText('SAFE ZONE',z.x+6,z.y+14);}}
+function stDrawStarts(cx){for(const s of state.starts){cx.fillStyle='rgba(251,146,60,0.18)';cx.strokeStyle='#ea580c';cx.lineWidth=1.5;cx.setLineDash([6,4]);cx.fillRect(s.x,s.y,s.w,s.h);cx.strokeRect(s.x,s.y,s.w,s.h);cx.setLineDash([]);cx.fillStyle='#c2410c';cx.font='11px sans-serif';cx.textAlign='left';cx.fillText('START',s.x+6,s.y+14);}}
+function stDrawBlocked(cx){for(const e of state.exits){if(!e.blocked)continue;cx.strokeStyle='#dc2626';cx.lineWidth=3;cx.beginPath();cx.moveTo(e.x-3,e.y-3);cx.lineTo(e.x+e.w+3,e.y+e.h+3);cx.moveTo(e.x+e.w+3,e.y-3);cx.lineTo(e.x-3,e.y+e.h+3);cx.stroke();cx.lineWidth=1.5;}}
+function stDrawDecor(cx){stDrawStarts(cx);stDrawBlocked(cx);}
+
+function studyRedraw(){
+  const c=document.getElementById('canvas'),cx=c.getContext('2d');beginFrame(cx);
+  cx.strokeStyle='#eef2f7';cx.lineWidth=1;cx.beginPath();for(let x=40;x<CANVAS_W;x+=40){cx.moveTo(x,0);cx.lineTo(x,CANVAS_H);}for(let y=40;y<CANVAS_H;y+=40){cx.moveTo(0,y);cx.lineTo(CANVAS_W,y);}cx.stroke();
+  stDrawSafes(cx);stDrawStarts(cx);
+  cx.fillStyle='#b4bcc5';cx.strokeStyle='#64748b';cx.lineWidth=2.5;
+  for(const w of state.walls){if(w.w&&w.h){cx.fillRect(w.x,w.y,w.w,w.h);cx.strokeRect(w.x,w.y,w.w,w.h);}else{cx.beginPath();cx.moveTo(w.x1,w.y1);cx.lineTo(w.x2,w.y2);cx.stroke();}}
+  const scale=+(document.getElementById('stScale')||{value:20}).value||20;
+  state.exits.forEach((e,k)=>{cx.fillStyle=e.blocked?'#fecaca':'#34d399';cx.strokeStyle=e.blocked?'#dc2626':'#059669';cx.lineWidth=2;cx.fillRect(e.x,e.y,e.w,e.h);cx.strokeRect(e.x,e.y,e.w,e.h);
+    cx.fillStyle='#0f172a';cx.font='bold 13px sans-serif';cx.textAlign='left';cx.fillText(exitName(k)+(e.blocked?' (blocked)':''),e.x+e.w+4,e.y+14);cx.font='11px sans-serif';cx.fillText((Math.max(e.w,e.h)/scale).toFixed(1)+' m',e.x+e.w+4,e.y+27);});
+  stDrawBlocked(cx);
+  if(STUDY.replay)stDrawReplay(cx,STUDY.replay);
+  else{for(const p of state.particles){const q=p.home||p.pos;cx.fillStyle='#ea580c';cx.beginPath();cx.arc(q.x,q.y,dotR(4),0,Math.PI*2);cx.fill();}
+    hud(cx,()=>{cx.fillStyle='#94a3b8';cx.font='14px sans-serif';cx.textAlign='center';cx.fillText('Study mode: press "Run study", then Replay.',CANVAS_W/2,CANVAS_H-24);cx.textAlign='left';});}}
+
+/* ---- charts ---- */
+function stCanvas(id){const c=document.getElementById(id);if(!c)return null;const dpr=window.devicePixelRatio||1,W=400,H=210;c.width=W*dpr;c.height=H*dpr;c.style.width=W+'px';c.style.height=H+'px';const cx=c.getContext('2d');cx.scale(dpr,dpr);cx.clearRect(0,0,W,H);return{cx,W,H};}
+function stNice(v){const p=Math.pow(10,Math.floor(Math.log10(v||1))),f=v/p;return(f<=1?1:f<=2?2:f<=5?5:10)*p;}
+function stBars(id,cond,key,title,dec){
+  const o=stCanvas(id);if(!o)return;const{cx,W,H}=o,M=['nearest','reroute','pso'],S=M.map(m=>stSummary(cond.rows[m].map(r=>r[key])));
+  const top=stNice(Math.max(...S.map(s=>s.mean+s.ci))*1.1)||1,L=42,R=10,T=26,B=34,pw=W-L-R,ph=H-T-B;
+  cx.font='12px sans-serif';cx.fillStyle='#0f172a';cx.textAlign='left';cx.fillText(title,6,15);
+  cx.strokeStyle='#e2e8f0';cx.fillStyle='#64748b';cx.font='10px sans-serif';cx.textAlign='right';cx.lineWidth=1;
+  for(let i=0;i<=4;i++){const v=top*i/4,y=T+ph-ph*i/4;cx.beginPath();cx.moveTo(L,y);cx.lineTo(W-R,y);cx.stroke();cx.fillText(+v.toFixed(1)+'',L-4,y+3);}
+  const bw=pw/3*0.62;M.forEach((m,i)=>{const x=L+pw/3*i+(pw/3-bw)/2,h=ph*S[i].mean/top,y=T+ph-h;cx.fillStyle=STUDY.COL[m];cx.fillRect(x,y,bw,h);
+    const ex=x+bw/2,y1=T+ph-ph*(S[i].mean+S[i].ci)/top,y2=T+ph-ph*Math.max(0,S[i].mean-S[i].ci)/top;cx.strokeStyle='#475569';cx.lineWidth=1.2;cx.beginPath();cx.moveTo(ex,y1);cx.lineTo(ex,y2);cx.moveTo(ex-4,y1);cx.lineTo(ex+4,y1);cx.moveTo(ex-4,y2);cx.lineTo(ex+4,y2);cx.stroke();
+    cx.fillStyle='#0f172a';cx.textAlign='center';cx.font='10px sans-serif';cx.fillText(S[i].mean.toFixed(dec),ex,y1-4);cx.fillStyle='#475569';cx.fillText(STUDY.NAME[m],x+bw/2,H-14);});}
+function stConv(id,study){
+  const o=stCanvas(id);if(!o)return;const{cx,W,H}=o,L=42,R=10,T=26,B=30,pw=W-L-R,ph=H-T-B,all=study.conds.flatMap(c=>c.hist),mx=Math.max(...all),mn=Math.min(...all),rng=(mx-mn)||1,lo=mn-rng*0.1,hi=mx+rng*0.1,len=Math.max(...study.conds.map(c=>c.hist.length));
+  cx.font='12px sans-serif';cx.fillStyle='#0f172a';cx.textAlign='left';cx.fillText('PSO convergence (best fitness, lower is better)',6,15);
+  cx.strokeStyle='#e2e8f0';cx.fillStyle='#64748b';cx.font='10px sans-serif';cx.textAlign='right';
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4,y=T+ph-ph*i/4;cx.beginPath();cx.moveTo(L,y);cx.lineTo(W-R,y);cx.stroke();cx.fillText(v.toFixed(1),L-4,y+3);}
+  cx.textAlign='center';cx.fillText('iteration',L+pw/2,H-4);
+  const SCOL=['#0f172a','#94a3b8'];study.conds.forEach((c,k)=>{cx.strokeStyle=SCOL[k%2];cx.lineWidth=2;cx.beginPath();c.hist.forEach((v,i)=>{const x=L+pw*i/Math.max(1,len-1),y=T+ph-ph*(v-lo)/(hi-lo);i?cx.lineTo(x,y):cx.moveTo(x,y);});cx.stroke();
+    cx.fillStyle=SCOL[k%2];cx.fillRect(L+8+k*120,T+4,10,3);cx.fillStyle='#475569';cx.textAlign='left';cx.fillText(c.name.slice(0,18),L+22+k*120,T+9);});}
+
+/* ---- results tables ---- */
+function stFmt(s,d){return s.mean.toFixed(d)+' ± '+s.ci.toFixed(d);}
+function stRenderResults(study){
+  const el=document.getElementById('stResults');let h='';
+  for(const c of study.conds){
+    h+=`<h4 class="sth">${c.name}${c.blocked.length?' (blocked: '+c.blocked.join(', ')+')':''}</h4>`;
+    if(c.degenerate)h+='<div class="hint">Only one exit is open, so every method gives the same plan.</div>';
+    h+=`<table class="st"><tr><th>Method</th><th>Avg time (s)</th><th>Max queue</th><th>${study.toSafe?'Reached safe':'Out'}</th><th>${study.toSafe?'Last arrival (s)':'Last exit (s)'}</th><th>Compute (s)</th></tr>`;
+    for(const m of ['nearest','reroute','pso']){const R=c.rows[m];h+=`<tr><td><span class="dot" style="background:${STUDY.COL[m]}"></span>${STUDY.NAME[m]}</td><td>${stFmt(stSummary(R.map(r=>r.avg)),2)}</td><td>${stFmt(stSummary(R.map(r=>r.maxQueue)),1)}</td><td>${stSummary(R.map(r=>r.nEvac)).mean.toFixed(0)}</td><td>${stSummary(R.map(r=>r.makespan)).mean.toFixed(1)}</td><td>${stSummary(R.map(r=>r.comp)).mean.toFixed(m==='pso'?2:4)}</td></tr>`;}
+    h+='</table><div class="small">Mean ± 95% CI over '+study.seeds.length+' test seeds. '+(study.toSafe?'Times are until each person reaches a safe zone (walk to an exit, wait at the door, walk outside). Last arrival = when the headcount can be completed. ':'Times are until each person passes an exit (no safe zone drawn). ')+'PSO compute time is the one-off optimisation.</div>';
+    h+='<table class="st"><tr><th>PSO minus</th><th>Metric</th><th>Mean diff [%]</th><th>Better in</th><th>Wilcoxon p</th></tr>';
+    for(const b of ['nearest','reroute'])for(const [k,nm] of [['avg','Avg time'],['maxQueue','Max queue']]){const r=stPaired(c,b,k);h+=`<tr><td>${STUDY.NAME[b]}</td><td>${nm}</td><td>${r.meanDiff.toFixed(2)} ± ${r.ci.toFixed(2)} [${r.pct.toFixed(1)}%]</td><td>${r.better}/${r.n}</td><td>${r.p<0.001?'<0.001':r.p.toFixed(3)}</td></tr>`;}
+    h+='</table><div class="small">Negative difference means PSO is lower (better). PSO exit penalties: '+c.open.map(e=>study.names[e]+' '+c.plan[e].toFixed(1)+' m').join(', ')+'. A penalty makes that exit count as farther; 0 = no change. Each person uses the exit with the lowest (walk to exit + walk to safe zone + penalty).</div>';}
+  el.innerHTML=h;}
+function stRedrawCharts(){const s=STUDY.study;if(!s)return;const ci=+document.getElementById('rpCond').value||0,c=s.conds[ci];if(!c)return;
+  stBars('stChartA',c,'avg','Average evacuation time (s)',2);stBars('stChartB',c,'maxQueue','Max queue length (agents)',1);stConv('stChartC',s);}
+
+/* ---- panels & events ---- */
+function stRefreshExits(){const el=document.getElementById('stExitList');if(!el)return;const sc=+(document.getElementById('stScale').value)||20;
+  if(!state.exits.length){el.innerHTML='<div class="hint">No exits drawn yet.</div>';return;}
+  el.innerHTML='<div class="small" style="margin-bottom:4px">Exits (tick to block)</div>'+state.exits.map((e,k)=>`<div class="checkbox-row"><input type="checkbox" data-k="${k}" ${e.blocked?'checked':''}><label>Exit ${exitName(k)} (${(Math.max(e.w,e.h)/sc).toFixed(1)} m door)</label></div>`).join('');
+  el.querySelectorAll('input').forEach(i=>i.addEventListener('change',()=>{histPush();state.exits[+i.dataset.k].blocked=i.checked;redraw();}));}
+function stDownload(name,text){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+function stSelectReplay(){const s=STUDY.study;if(!s||STUDY.stale)return;const ci=+document.getElementById('rpCond').value||0,m=document.getElementById('rpMethod').value,si=+document.getElementById('rpSeed').value||0,c=s.conds[ci];if(!c)return;
+  STUDY.replay=stReplayBuild(s,c,m,si);{const lg=document.getElementById('rpLegend');if(lg)lg.innerHTML=stReplayLegendHtml(STUDY.replay);}STUDY.replay.speed=+document.getElementById('rpSpeed').value||5;const sl=document.getElementById('rpSlider');sl.max=STUDY.replay.tEnd;sl.value=0;stRedrawCharts();redraw();}
+function stLoop(ts){const rp=STUDY.replay;if(!rp||!rp.playing||state.mode!=='study')return;if(!rp.last)rp.last=ts;const dt=Math.min((ts-rp.last)/1000,0.1);rp.last=ts;rp.t=Math.min(rp.t+dt*rp.speed,rp.tEnd);
+  document.getElementById('rpSlider').value=rp.t;redraw();if(rp.t>=rp.tEnd){rp.playing=false;document.getElementById('rpPlay').textContent='▶ Replay';return;}requestAnimationFrame(stLoop);}
+function studyOnMode(m){
+  const mb=document.getElementById('modeStudy'),pn=document.getElementById('studyPanel'),side=document.getElementById('sidePanel');if(mb)mb.classList.toggle('active',m==='study');if(pn)pn.style.display=m==='study'?'flex':'none';
+  if(m!=='study'&&STUDY.replay){STUDY.replay.playing=false;const b=document.getElementById('rpPlay');if(b)b.textContent='▶ Replay';}
+  applyVisibility();
+  if(m==='sim'){simPlanHint();simStatsHtml();}
+  if(m==='study'){const h=document.getElementById('stNHint'),n=state.particles.length;if(h)h.textContent=n?('Ignored: using your '+n+' placed particles as evacuees.'):'Used for Start zones (no particles placed).';stRefreshExits();setStatus('Study mode: set parameters, press Run study, then replay a scenario. Return to Edit mode to change the map.');}}
+function initStudyUI(){
+  const side=document.getElementById('sidePanel');
+  document.getElementById('mapSec').insertAdjacentHTML('afterend',`<div class="section" id="studySec" data-show="study"><h3>Study</h3>
+  <p class="lead">Compares <b>PSO</b> with <b>nearest exit</b> and <b>dynamic reroute</b> on this map: time for everyone to reach a safe zone, and the longest line at a door.</p>
+  <div class="grid2"><label class="field">Evacuees<input type="number" id="stN" value="200" step="10"></label><label class="field">Test runs (seeds)<input type="number" id="stSeeds" value="15" step="1"></label></div>
+  <div class="hint" id="stNHint" style="margin-top:4px">Used for Start zones only.</div>
+  <div id="stExitList" style="margin-top:8px"></div>
+  <button class="primary big" id="stRun" style="margin-top:8px">Run study</button>
+  <details><summary>Advanced settings</summary>
+  <div class="row"><label>PSO particles</label><input type="number" id="stParticles" value="20" step="1"></div>
+  <div class="row"><label>PSO iterations</label><input type="number" id="stIters" value="30" step="1"></div>
+  <div class="row"><label>Queue weight</label><input type="number" id="stQw" value="0" step="0.1"></div>
+  <div class="checkbox-row"><input type="checkbox" id="stAlso" checked><label>Also test with the busiest exit blocked</label></div>
+  <div class="hint">Queue weight 0 = PSO minimises time to safety only. A higher weight trades time for shorter lines.</div></details></div>`);
+  document.querySelector('.workspace').insertAdjacentHTML('beforeend',`<div class="studypanel" id="studyPanel">
+  <div class="section"><h3>Run</h3><div id="stProg" class="small" style="font-weight:600;color:#334155">Not run yet. Press <b>Run study</b> on the left.</div><progress id="stBar" max="1" value="0" style="width:100%"></progress><details id="stNotesBox" hidden><summary>Run details</summary><div id="stNotes" class="hint" style="margin-top:0"></div></details></div>
+  <div class="section"><h3>Replay</h3>
+   <div class="grid2"><label class="field">Method<select class="selectbox" id="rpMethod"><option value="pso">PSO</option><option value="nearest">Nearest exit</option><option value="reroute">Dynamic reroute</option></select></label>
+   <label class="field">Scenario<select class="selectbox" id="rpCond"></select></label>
+   <label class="field">Test run<select class="selectbox" id="rpSeed"></select></label>
+   <label class="field">Speed<select class="selectbox" id="rpSpeed"><option value="1">1x</option><option value="2">2x</option><option value="5" selected>5x</option><option value="10">10x</option><option value="20">20x</option></select></label></div>
+   <div style="height:8px"></div>
+   <div style="display:flex;gap:6px"><button class="primary" id="rpPlay">▶ Replay</button><button id="rpRestart">Restart</button></div>
+   <input type="range" id="rpSlider" min="0" max="300" step="0.1" value="0" style="width:100%;margin-top:8px">
+   <div id="rpLegend"></div></div>
+  <div class="section"><div class="sechead"><h3>Results</h3><button id="stCsvBtn">Export CSV</button></div><div id="stResults" class="small">Run the study to see results.</div>
+   <canvas id="stChartA" style="margin-top:8px;cursor:default"></canvas><canvas id="stChartB" style="cursor:default"></canvas><canvas id="stChartC" style="cursor:default"></canvas></div></div>`);
+  document.getElementById('stScale').addEventListener('change',()=>{stRefreshExits();redraw();});
+  document.getElementById('stDemoBtn').addEventListener('click',stDemoMap);
+  document.getElementById('stCollegeBtn').addEventListener('click',stCollegeMap);
+  document.getElementById('stCsvBtn').addEventListener('click',()=>{if(!STUDY.study){setStatus('Run the study first.');return;}stDownload('swarmpath_results.csv',stCsv(STUDY.study));});
+  ['rpCond','rpMethod','rpSeed'].forEach(id=>document.getElementById(id).addEventListener('change',stSelectReplay));
+  document.getElementById('rpSpeed').addEventListener('change',()=>{if(STUDY.replay)STUDY.replay.speed=+document.getElementById('rpSpeed').value;});
+  document.getElementById('rpSlider').addEventListener('input',e=>{if(STUDY.replay){STUDY.replay.t=+e.target.value;redraw();}});
+  document.getElementById('rpRestart').addEventListener('click',()=>{if(STUDY.replay){STUDY.replay.t=0;STUDY.replay.last=0;redraw();}});
+  document.getElementById('rpPlay').addEventListener('click',()=>{const rp=STUDY.replay;if(!rp){setStatus('Run the study first.');return;}if(rp.playing){rp.playing=false;document.getElementById('rpPlay').textContent='▶ Replay';return;}
+    if(rp.t>=rp.tEnd)rp.t=0;rp.playing=true;rp.last=0;document.getElementById('rpPlay').textContent='⏸ Pause';requestAnimationFrame(stLoop);});
+  let running=false;
+  document.getElementById('stRun').addEventListener('click',async()=>{if(running)return;running=true;const btn=document.getElementById('stRun');btn.disabled=true;
+    const P={pxPerM:+document.getElementById('stScale').value||20,n:Math.max(2,+document.getElementById('stN').value||200),seeds:Math.max(2,+document.getElementById('stSeeds').value||15),
+      particles:Math.max(2,+document.getElementById('stParticles').value||20),iters:Math.max(1,+document.getElementById('stIters').value||30),qw:+document.getElementById('stQw').value,alsoBlock:document.getElementById('stAlso').checked,psoSeed:0};
+    if(isNaN(P.qw))P.qw=0;const prog=document.getElementById('stProg'),bar=document.getElementById('stBar');
+    try{if(STUDY.replay)STUDY.replay.playing=false;document.getElementById('stNotesBox').hidden=true;const study=await stRun(P,(msg,f)=>{prog.textContent=msg;bar.value=f;});STUDY.study=study;STUDY.stale=false;
+      document.getElementById('rpCond').innerHTML=study.conds.map((c,i)=>`<option value="${i}">${c.name}</option>`).join('');
+      document.getElementById('rpSeed').innerHTML=study.seeds.map((s,i)=>`<option value="${i}">${i+1} (seed ${s})</option>`).join('');
+      const pn=study.params.n,src=study.world.fixed?('your '+pn+' placed particles (same start positions every seed; walking speed and reaction delay change per seed)'+(study.world.skipped?'. '+study.world.skipped+' particle(s) could not reach an exit and were left out. Check that their room has a door and that corridors are at least 1.5 m (30 px) wide':'')):(pn+' evacuees placed randomly in the START zones');
+      const dn=study.toSafe?(' Destination: nearest of '+study.world.safeCount+' safe zone(s), reached through an exit.'+(study.world.fixed&&study.world.nOutdoor?' '+study.world.nOutdoor+' particle(s) start outside the building and walk straight to the safe zone.':'')+(study.world.destNotes.length?' Note: '+study.world.destNotes.join('. ')+'.':'')):' No safe zone drawn, so people count as safe once they pass an exit.';
+      prog.textContent='Done: '+pn+' evacuees, '+P.seeds+' test runs, '+study.conds.length+' scenario(s).';
+      const notes=study.world.g.fallback&&!study.world.fixed?'No START zone drawn, so evacuees start anywhere that reaches an exit (including outside walls). Draw a START zone for realistic runs.':('Evacuees: '+src+'.'+dn);
+      document.getElementById('stNotes').textContent=notes;const nb=document.getElementById('stNotesBox');nb.hidden=false;nb.open=/left out|Note:|outside|No START/.test(notes);
+      stRenderResults(study);stSelectReplay();setStatus('Study complete. Press Replay to watch a run.');}
+    catch(err){prog.textContent='Error: '+err.message;document.getElementById('stNotesBox').hidden=true;setStatus('Study failed: '+err.message);}
+    btn.disabled=false;running=false;});}
+document.addEventListener('DOMContentLoaded',initStudyUI);
+/* ===================== UNDO / REDO for layout editing ===================== */
+const HIST={undo:[],redo:[],max:100};
+function histSnap(){return JSON.stringify({walls:state.walls,exits:state.exits,safes:state.safes,starts:state.starts,
+  particles:state.particles.map(p=>({x:p.pos.x,y:p.pos.y}))});}
+function histButtons(){const u=document.getElementById('btnUndo'),r=document.getElementById('btnRedo');if(u)u.disabled=!HIST.undo.length;if(r)r.disabled=!HIST.redo.length;}
+function histPush(snap){HIST.undo.push(snap||histSnap());if(HIST.undo.length>HIST.max)HIST.undo.shift();HIST.redo=[];histButtons();stMarkStale();}
+function histRestore(str){const d=JSON.parse(str);
+  state.walls=d.walls;state.exits=d.exits;state.safes=d.safes;state.starts=d.starts||[];
+  state.particles=d.particles.map(q=>new Particle(q.x,q.y));
+  state.selected=null;state.drag=null;state.iter=0;
+  document.getElementById('statParticles').textContent=state.particles.length;document.getElementById('statIter').textContent='0';document.getElementById('statEvac').textContent='0';
+  updateSelectionPanel();stRefreshExits();stMarkStale();}
+function histUndo(){if(state.mode!=='edit'){setStatus('Switch to Edit Map mode to undo.');return;}if(!HIST.undo.length){setStatus('Nothing to undo.');return;}
+  HIST.redo.push(histSnap());histRestore(HIST.undo.pop());histButtons();setStatus('Undid last change ('+HIST.undo.length+' more can be undone).');redraw();}
+function histRedo(){if(state.mode!=='edit'){setStatus('Switch to Edit Map mode to redo.');return;}if(!HIST.redo.length){setStatus('Nothing to redo.');return;}
+  HIST.undo.push(histSnap());histRestore(HIST.redo.pop());histButtons();setStatus('Redid change.');redraw();}
+function stMarkStale(){if(STUDY.study&&!STUDY.stale){STUDY.stale=true;if(STUDY.replay)STUDY.replay.playing=false;STUDY.replay=null;{const lg=document.getElementById('rpLegend');if(lg)lg.innerHTML='';}const p=document.getElementById('stProg');if(p)p.textContent='The map changed since the last run, so results and replay are out of date. Press Run study again.';}}
+document.addEventListener('DOMContentLoaded',histButtons);
+
+window.app={undo:histUndo,redo:histRedo,setMode,setTool,applyPso,applyBoids,toggleRun,stepSim,resetSim,saveMap,loadMap,clearMap,deleteSelected,applySelTransform,applySelSize,redraw};
+document.addEventListener('DOMContentLoaded',()=>{app.setMode('edit');app.setTool('select');app.redraw();document.getElementById('status').textContent='Ready: load Demo or College, or draw with the tools in the top bar.';});
+</script>
+</body>
+</html>
+
